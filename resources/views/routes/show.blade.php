@@ -32,7 +32,14 @@
 
     <section class="detail-map-card">
         <div id="route-viewer-map" class="detail-map" aria-label="Peta rute"></div>
-        <p class="map-note">Pratinjau saat ini menghubungkan koordinat yang tersimpan. Perutean mengikuti jalan dan unduhan GPX belum diaktifkan.</p>
+        <p class="map-note">
+            @if ($route->routing_mode === 'foot')
+                Rute mengikuti jalur pejalan kaki OpenStreetMap melalui FOSSGIS. Permintaan koordinat dicatat pada log layanan.
+            @else
+                Rute menghubungkan titik kontrol secara langsung.
+            @endif
+            <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noreferrer">Perbaiki data peta</a> · © OpenStreetMap contributors.
+        </p>
     </section>
 @endsection
 

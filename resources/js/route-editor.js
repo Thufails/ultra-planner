@@ -77,12 +77,22 @@ function initializeRouteEditor() {
     const message = editor.querySelector('[data-form-message]');
     const countElement = editor.querySelector('[data-point-count]');
     const distanceElement = editor.querySelector('[data-distance]');
+    const distanceLabel = editor.querySelector('[data-distance-label]');
+    const followRoadsToggle = editor.querySelector('[data-follow-roads]');
+    const routingStatus = editor.querySelector('[data-routing-status]');
+    const alternativesContainer = editor.querySelector('[data-route-alternatives]');
 
     const map = createMap(mapElement, config);
+    initializeLocationSearch(map, config);
     const markers = L.layerGroup().addTo(map);
     let controlPoints = normalizePoints(config.controlPoints);
     let trackPoints = normalizePoints(config.routePoints);
-    let trackWasEdited = false;
+    let routingMode = config.routingMode === 'foot' ? 'foot' : 'direct';
+    let routeIsCurrent = routingMode === 'direct' || trackPoints.length >= 2;
+    let routedDistanceMeters = Number(config.distanceMeters) || null;
+    let routeCandidates = [];
+    let routeDebounceTimer = null;
+    let routeRequestGeneration = 0;
     let path = null;
     let userLocationMarker = null;
     let userAccuracyCircle = null;
@@ -91,20 +101,43 @@ function initializeRouteEditor() {
     let bestLocationAccuracy = Number.POSITIVE_INFINITY;
     let centeredDuringLocationSearch = false;
 
+    followRoadsToggle.checked = routingMode === 'foot';
+
     function visibleTrack() {
-        if (trackWasEdited || trackPoints.length === 0) return controlPoints;
+        if (routingMode !== 'foot' || !routeIsCurrent || trackPoints.length === 0) return controlPoints;
 
         return trackPoints;
     }
 
     function updateSummary() {
         const previewPoints = visibleTrack();
-        const distance = distanceOf(previewPoints);
+        const distance = routingMode === 'foot' && routeIsCurrent && routedDistanceMeters !== null
+            ? routedDistanceMeters
+            : distanceOf(previewPoints);
 
         countElement.textContent = String(controlPoints.length);
         distanceElement.textContent = `${(distance / 1000).toFixed(1)} km`;
+        distanceLabel.textContent = routingMode === 'foot' && routeIsCurrent
+            ? 'jarak mengikuti jalan'
+            : 'perkiraan jarak garis';
         undoButton.disabled = controlPoints.length === 0;
         clearButton.disabled = controlPoints.length === 0;
+    }
+
+    function renderAlternatives() {
+        alternativesContainer.replaceChildren();
+        alternativesContainer.hidden = routeCandidates.length < 2;
+
+        routeCandidates.forEach((candidate, index) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'route-alternative';
+            button.classList.toggle('is-selected', index === selectedRouteCandidate);
+            button.setAttribute('aria-pressed', String(index === selectedRouteCandidate));
+            button.textContent = `Jalur ${index + 1} · ${(candidate.distance_meters / 1000).toFixed(1)} km`;
+            button.addEventListener('click', () => selectRouteCandidate(index));
+            alternativesContainer.append(button);
+        });
     }
 
     function render() {
@@ -120,7 +153,14 @@ function initializeRouteEditor() {
         if (previewPoints.length >= 2) {
             path = L.polyline(
                 previewPoints.map((point) => [point.latitude, point.longitude]),
-                { color: '#e16b47', weight: 5, opacity: 0.92, lineCap: 'round', lineJoin: 'round' },
+                {
+                    color: routingMode === 'foot' && routeIsCurrent ? '#3155e5' : '#3867ff',
+                    weight: 5,
+                    opacity: 0.95,
+                    dashArray: routingMode === 'foot' && !routeIsCurrent ? '8 8' : null,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                },
             ).addTo(map);
         }
 
@@ -138,13 +178,125 @@ function initializeRouteEditor() {
                     latitude: position.lat,
                     longitude: position.lng,
                 };
-                trackWasEdited = true;
-                render();
+                if (routingMode === 'foot') scheduleRoadRoute();
+                else render();
             });
         });
 
         updateSummary();
+        renderAlternatives();
     }
+
+    function setRoutingStatus(text, isError = false) {
+        routingStatus.textContent = text;
+        routingStatus.classList.toggle('is-error', isError);
+    }
+
+    function selectRouteCandidate(index) {
+        const candidate = routeCandidates[index];
+        if (!candidate) return;
+
+        selectedRouteCandidate = index;
+        trackPoints = normalizePoints(candidate.route_points);
+        routedDistanceMeters = Number(candidate.distance_meters) || null;
+        routeIsCurrent = true;
+        render();
+        const maxSnapDistance = Math.max(0, ...lastSnapDistances);
+        setRoutingStatus(maxSnapDistance > 50
+            ? `Jalur siap. Titik terjauh tersambung ke jalan sekitar ${Math.round(maxSnapDistance)} m dari lokasi klik.`
+            : `Jalur pejalan kaki siap (${(routedDistanceMeters / 1000).toFixed(1)} km).`);
+    }
+
+    let selectedRouteCandidate = 0;
+    let lastSnapDistances = [];
+
+    async function calculateRoadRoute(requestGeneration) {
+        if (requestGeneration !== routeRequestGeneration || routingMode !== 'foot') return;
+
+        try {
+            const response = await fetch(config.previewUrl, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                },
+                body: JSON.stringify({
+                    control_points: controlPoints.map(({ latitude, longitude }) => ({ latitude, longitude })),
+                }),
+            });
+            const payload = await response.json().catch(() => ({}));
+
+            if (requestGeneration !== routeRequestGeneration) return;
+            if (!response.ok) {
+                const validationMessage = Object.values(payload.errors ?? {}).flat()[0];
+                throw new Error(validationMessage ?? payload.message ?? 'Jalur pejalan kaki gagal dihitung.');
+            }
+
+            routeCandidates = (payload.routes ?? []).filter((candidate) =>
+                Array.isArray(candidate.route_points) && candidate.route_points.length >= 2,
+            );
+            lastSnapDistances = (payload.snap_distances_meters ?? []).map(Number).filter(Number.isFinite);
+            selectedRouteCandidate = 0;
+
+            if (routeCandidates.length === 0) throw new Error('Layanan tidak mengembalikan geometri rute yang bisa ditampilkan.');
+
+            selectRouteCandidate(0);
+            if (routeCandidates.length > 1) {
+                const maxSnapDistance = Math.max(0, ...lastSnapDistances);
+                const snapNotice = maxSnapDistance > 50
+                    ? ` Titik terjauh tersambung sekitar ${Math.round(maxSnapDistance)} m dari lokasi klik.`
+                    : '';
+                setRoutingStatus(`${routeCandidates.length} pilihan jalur tersedia. Pilih yang paling sesuai.${snapNotice}`);
+            }
+        } catch (error) {
+            if (requestGeneration !== routeRequestGeneration) return;
+
+            routeIsCurrent = false;
+            routedDistanceMeters = null;
+            routeCandidates = [];
+            render();
+            setRoutingStatus(`${error.message} Garis putus-putus hanya pratinjau langsung; rute belum siap disimpan.`, true);
+        }
+    }
+
+    function scheduleRoadRoute() {
+        if (routeDebounceTimer) window.clearTimeout(routeDebounceTimer);
+        const requestGeneration = ++routeRequestGeneration;
+        routeIsCurrent = false;
+        routedDistanceMeters = null;
+        routeCandidates = [];
+        alternativesContainer.hidden = true;
+        render();
+
+        if (controlPoints.length < 2) {
+            setRoutingStatus('Tambahkan minimal dua titik kontrol untuk mengikuti jalan.');
+            return;
+        }
+
+        setRoutingStatus('Menghitung jalur pejalan kaki…');
+        routeDebounceTimer = window.setTimeout(() => calculateRoadRoute(requestGeneration), 1100);
+    }
+
+    followRoadsToggle.addEventListener('change', () => {
+        routingMode = followRoadsToggle.checked ? 'foot' : 'direct';
+        routeRequestGeneration += 1;
+        if (routeDebounceTimer) window.clearTimeout(routeDebounceTimer);
+        routeDebounceTimer = null;
+        routeCandidates = [];
+        alternativesContainer.hidden = true;
+
+        if (routingMode === 'foot') {
+            scheduleRoadRoute();
+        } else {
+            routeIsCurrent = true;
+            trackPoints = controlPoints.map((point) => ({ ...point }));
+            routedDistanceMeters = null;
+            render();
+            setRoutingStatus('Garis lurus antar titik kontrol.');
+        }
+    });
 
     function stopLocationSearch(statusMessage, isError = false) {
         if (!locationWatchActive) return;
@@ -241,33 +393,38 @@ function initializeRouteEditor() {
     });
 
     map.on('click', (event) => {
+        if (controlPoints.length >= 40) {
+            setRoutingStatus('Maksimal 40 titik kontrol untuk satu rute.');
+            return;
+        }
+
         controlPoints.push({
             latitude: event.latlng.lat,
             longitude: event.latlng.lng,
             elevation_meters: null,
             track_segment_index: 0,
         });
-        trackWasEdited = true;
-
         if (controlPoints.length === 1) {
             map.setView(event.latlng, Math.max(map.getZoom(), 13));
         }
 
-        render();
+        if (routingMode === 'foot') scheduleRoadRoute();
+        else render();
     });
 
     undoButton.addEventListener('click', () => {
         controlPoints.pop();
-        trackWasEdited = true;
-        render();
+        if (routingMode === 'foot') scheduleRoadRoute();
+        else render();
         message.textContent = 'Titik kontrol terakhir dihapus. Perubahan tersimpan setelah kamu menekan Simpan.';
         message.classList.remove('is-error');
     });
 
     clearButton.addEventListener('click', () => {
         controlPoints = [];
-        trackWasEdited = true;
-        render();
+        trackPoints = [];
+        if (routingMode === 'foot') scheduleRoadRoute();
+        else render();
         message.textContent = 'Semua titik kontrol dihapus dari rancangan ini.';
         message.classList.remove('is-error');
     });
@@ -287,11 +444,15 @@ function initializeRouteEditor() {
             return;
         }
 
-        const submittedTrack = trackWasEdited || trackPoints.length === 0
-            ? controlPoints
-            : trackPoints;
+        if (routingMode === 'foot' && (!routeIsCurrent || trackPoints.length < 2)) {
+            showMessage('Tunggu sampai jalur mengikuti jalan selesai dihitung. Jika layanan belum tersedia, matikan opsi Ikuti jalan untuk menyimpan garis langsung.', true);
+            return;
+        }
+
+        const submittedTrack = routingMode === 'foot' ? trackPoints : controlPoints;
         const payload = {
             name: nameInput.value.trim(),
+            routing_mode: routingMode,
             control_points: controlPoints.map(({ latitude, longitude }) => ({ latitude, longitude })),
             route_points: submittedTrack.map(({ latitude, longitude, elevation_meters, track_segment_index }) => ({
                 latitude,
@@ -347,6 +508,112 @@ function initializeRouteEditor() {
     window.setTimeout(() => map.invalidateSize(), 0);
 }
 
+function initializeLocationSearch(map, config) {
+    const form = document.querySelector('[data-location-search]');
+    if (!form) return;
+
+    const input = form.querySelector('#location-query');
+    const searchButton = form.querySelector('[data-location-search-button]');
+    const resultsContainer = form.querySelector('[data-location-search-results]');
+    const status = form.querySelector('[data-location-search-status]');
+
+    input.addEventListener('input', () => {
+        resultsContainer.hidden = true;
+        resultsContainer.replaceChildren();
+    });
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        const query = input.value.trim();
+        if (query.length < 2) {
+            status.textContent = 'Ketik minimal dua karakter untuk mencari.';
+            status.classList.add('is-error');
+            input.focus();
+            return;
+        }
+
+        const url = new URL(config.searchUrl, window.location.origin);
+        url.searchParams.set('q', query);
+        searchButton.disabled = true;
+        searchButton.textContent = 'Mencari…';
+        status.textContent = 'Sedang mencari lokasi…';
+        status.classList.remove('is-error');
+        resultsContainer.hidden = true;
+        resultsContainer.replaceChildren();
+
+        try {
+            const response = await fetch(url, {
+                headers: { Accept: 'application/json' },
+                credentials: 'same-origin',
+            });
+            const payload = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                const validationMessage = Object.values(payload.errors ?? {}).flat()[0];
+                throw new Error(validationMessage ?? payload.message ?? 'Pencarian gagal. Coba lagi.');
+            }
+
+            const results = payload.results ?? [];
+            if (results.length === 0) {
+                status.textContent = 'Lokasi tidak ditemukan. Coba nama daerah yang lebih spesifik.';
+                return;
+            }
+
+            results.forEach((result) => {
+                const option = document.createElement('button');
+                option.type = 'button';
+                option.className = 'location-result';
+                option.setAttribute('role', 'option');
+
+                const title = document.createElement('strong');
+                title.textContent = result.label.split(',')[0];
+
+                const detail = document.createElement('small');
+                detail.textContent = result.label;
+
+                option.append(title, detail);
+                option.addEventListener('click', () => {
+                    selectSearchResult(map, result);
+                    input.value = result.label.split(',')[0];
+                    resultsContainer.hidden = true;
+                    status.textContent = `Peta dipindahkan ke ${result.label}. Lokasi ini tidak disimpan sebagai titik rute.`;
+                    status.classList.remove('is-error');
+                });
+
+                resultsContainer.append(option);
+            });
+
+            resultsContainer.hidden = false;
+            status.textContent = `${results.length} hasil ditemukan. Pilih salah satu untuk memindahkan peta.`;
+        } catch (error) {
+            status.textContent = error.message || 'Layanan pencarian lokasi sedang tidak tersedia.';
+            status.classList.add('is-error');
+        } finally {
+            searchButton.disabled = false;
+            searchButton.textContent = 'Cari';
+        }
+    });
+}
+
+function selectSearchResult(map, result) {
+    const latitude = Number(result.latitude);
+    const longitude = Number(result.longitude);
+    const box = Array.isArray(result.bounding_box) ? result.bounding_box.map(Number) : [];
+
+    if (box.length === 4 && box.every(Number.isFinite)) {
+        const [south, north, west, east] = box;
+        const bounds = L.latLngBounds([south, west], [north, east]);
+
+        if (bounds.isValid()) {
+            map.fitBounds(bounds.pad(0.08), { maxZoom: 15 });
+            return;
+        }
+    }
+
+    map.setView([latitude, longitude], 14, { animate: true });
+}
+
 function initializeRouteViewer() {
     const mapElement = document.getElementById('route-viewer-map');
     const config = window.routeViewerConfig;
@@ -361,7 +628,7 @@ function initializeRouteViewer() {
     if (visiblePoints.length >= 2) {
         L.polyline(
             visiblePoints.map((point) => [point.latitude, point.longitude]),
-            { color: '#e16b47', weight: 5, opacity: 0.92, lineCap: 'round', lineJoin: 'round' },
+            { color: '#3867ff', weight: 5, opacity: 0.95, lineCap: 'round', lineJoin: 'round' },
         ).addTo(map);
     }
 

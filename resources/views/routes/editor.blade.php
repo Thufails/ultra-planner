@@ -44,7 +44,59 @@
                 <button class="button button-secondary" type="button" data-locate>◎ Lokasi saya</button>
                 <button class="button button-secondary" type="button" data-undo disabled>↶ Undo</button>
                 <button class="button button-quiet" type="button" data-clear disabled>Hapus semua</button>
+                <button class="button button-primary" type="button" data-save>
+                    {{ $isEditing ? 'Simpan perubahan' : 'Simpan rute' }}
+                </button>
             </div>
+        </div>
+
+        <div class="location-search-row">
+            <form class="location-search" data-location-search role="search">
+                <label class="location-search-label" for="location-query">Cari daerah atau tempat</label>
+                <div class="location-search-controls">
+                    <span class="location-search-icon" aria-hidden="true">⌕</span>
+                    <input id="location-query" name="q" type="search" maxlength="120" autocomplete="off"
+                        placeholder="Contoh: Kota Batu, Jawa Timur" aria-controls="location-search-results">
+                    <button class="button button-primary" type="submit" data-location-search-button>Cari</button>
+                    <div class="location-search-results" id="location-search-results" data-location-search-results role="listbox" aria-label="Hasil pencarian lokasi" hidden></div>
+                </div>
+                <div class="location-search-meta">
+                    <p data-location-search-status role="status" aria-live="polite">Pencarian dikirim ke Nominatim; hasilnya tidak ditambahkan sebagai titik rute.</p>
+                    <small>Gunakan nama daerah atau tempat umum · Data © OpenStreetMap contributors</small>
+                </div>
+            </form>
+        </div>
+
+        <div class="route-metrics" aria-live="polite">
+            <article class="metric-card">
+                <span class="metric-icon metric-icon-distance" aria-hidden="true">↗</span>
+                <span class="metric-copy">
+                    <strong data-distance>0.0 km</strong>
+                    <small data-distance-label>perkiraan jarak garis</small>
+                </span>
+            </article>
+            <article class="metric-card">
+                <span class="metric-icon metric-icon-points" aria-hidden="true">⌖</span>
+                <span class="metric-copy">
+                    <strong data-point-count>0</strong>
+                    <small>titik kontrol</small>
+                </span>
+            </article>
+        </div>
+
+        <div class="routing-options">
+            <label class="routing-toggle">
+                <input type="checkbox" data-follow-roads @checked($route?->routing_mode === 'foot')>
+                <span class="routing-toggle-track" aria-hidden="true"></span>
+                <span class="routing-toggle-copy">
+                    <strong>Ikuti jalan</strong>
+                    <small>Hitung jalur pejalan kaki di antara titik kontrol</small>
+                </span>
+            </label>
+            <div class="routing-status" data-routing-status role="status" aria-live="polite">
+                {{ $route?->routing_mode === 'foot' ? 'Jalur tersimpan mengikuti jalan.' : 'Garis lurus antar titik kontrol.' }}
+            </div>
+            <div class="route-alternatives" data-route-alternatives hidden aria-label="Pilihan jalur"></div>
         </div>
 
         <div class="map-frame">
@@ -57,17 +109,8 @@
         </div>
 
         <div class="editor-footer">
-            <div class="route-summary">
-                <div><strong data-point-count>0</strong><span>titik kontrol</span></div>
-                <div><strong data-distance>0.0 km</strong><span>perkiraan jarak garis</span></div>
-            </div>
-            <p class="map-note">Garis saat ini menghubungkan titik secara langsung. Mengikuti jalan dan ekspor GPX akan disambungkan pada tahap berikutnya.</p>
-            <div class="save-area">
-                <p class="form-message" data-form-message role="status" aria-live="polite"></p>
-                <button class="button button-primary" type="button" data-save>
-                    {{ $isEditing ? 'Simpan perubahan' : 'Simpan rute' }}
-                </button>
-            </div>
+            <p class="map-note" data-map-note>Rute dihitung dari titik kontrol. Saat Ikuti jalan aktif, koordinat dikirim dan dicatat pada log layanan routing FOSSGIS. <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noreferrer">Perbaiki data peta</a> · © OpenStreetMap contributors.</p>
+            <p class="form-message" data-form-message role="status" aria-live="polite"></p>
         </div>
     </section>
 @endsection
@@ -78,11 +121,15 @@
             'mode' => $isEditing ? 'edit' : 'create',
             'storeUrl' => route('routes.store'),
             'updateUrl' => $route ? route('routes.update', $route) : null,
+            'searchUrl' => route('routes.location-search'),
+            'previewUrl' => route('routes.preview'),
             'showUrlTemplate' => url('/routes/__ROUTE_ID__'),
             'initialCenter' => [-2.5, 118],
             'initialZoom' => 5,
             'controlPoints' => $controlPoints,
             'routePoints' => $trackPoints,
+            'routingMode' => $route?->routing_mode ?? 'direct',
+            'distanceMeters' => $route?->distance_meters,
         ]);
     </script>
 @endpush

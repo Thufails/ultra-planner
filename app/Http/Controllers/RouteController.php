@@ -44,6 +44,7 @@ class RouteController extends Controller
         $route = DB::transaction(function () use ($validated): Route {
             $route = Route::create([
                 'name' => $validated['name'],
+                'routing_mode' => $validated['routing_mode'] ?? 'direct',
             ]);
 
             $this->replaceControlPoints($route, $validated['control_points']);
@@ -89,6 +90,11 @@ class RouteController extends Controller
                 $route->save();
             }
 
+            if (array_key_exists('routing_mode', $validated)) {
+                $route->routing_mode = $validated['routing_mode'];
+                $route->save();
+            }
+
             $controlPointsChanged = array_key_exists('control_points', $validated);
             $trackPointsProvided = array_key_exists('route_points', $validated);
 
@@ -122,6 +128,7 @@ class RouteController extends Controller
     {
         return [
             'name' => ['required', 'string', 'max:150'],
+            'routing_mode' => ['sometimes', 'required', 'in:direct,foot'],
             'control_points' => ['required', 'array', 'min:2'],
             'control_points.*.latitude' => ['required', 'numeric', 'between:-90,90'],
             'control_points.*.longitude' => ['required', 'numeric', 'between:-180,180'],
@@ -137,6 +144,7 @@ class RouteController extends Controller
     {
         return [
             'name' => ['sometimes', 'required', 'string', 'max:150'],
+            'routing_mode' => ['sometimes', 'required', 'in:direct,foot'],
             'control_points' => ['sometimes', 'required', 'array', 'min:2'],
             'control_points.*.latitude' => ['required', 'numeric', 'between:-90,90'],
             'control_points.*.longitude' => ['required', 'numeric', 'between:-180,180'],

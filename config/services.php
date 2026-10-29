@@ -35,4 +35,20 @@ return [
         ],
     ],
 
+    'nominatim' => [
+        'endpoint' => env('NOMINATIM_ENDPOINT', 'https://nominatim.openstreetmap.org/search'),
+        'user_agent' => env(
+            'NOMINATIM_USER_AGENT',
+            'UltraPlanner/1.0 (+' . env('APP_URL', 'http://localhost') . ')',
+        ),
+    ],
+
+    'routing' => [
+        'endpoint' => env('ROUTING_ENDPOINT', 'https://routing.openstreetmap.de/routed-foot/route/v1/driving'),
+        'user_agent' => env(
+            'ROUTING_USER_AGENT',
+            'UltraPlanner/1.0 (+' . env('APP_URL', 'http://localhost') . ')',
+        ),
+    ],
+
 ];

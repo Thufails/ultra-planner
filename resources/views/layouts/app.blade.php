@@ -11,7 +11,13 @@
     <div class="app-shell">
         <header class="topbar">
             <a class="brand" href="{{ route('routes.index') }}" aria-label="Ultra Planner, halaman rute">
-                <span class="brand-mark">U</span>
+                <span class="brand-mark" aria-hidden="true">
+                    <svg viewBox="0 0 32 32" fill="none">
+                        <path d="M8 25c0-5 3-8 8-8s8-3 8-10" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-dasharray="1 0" />
+                        <circle cx="8" cy="25" r="3" fill="currentColor" />
+                        <circle cx="24" cy="7" r="3" fill="currentColor" />
+                    </svg>
+                </span>
                 <span class="brand-copy">
                     <strong>ULTRA PLANNER</strong>
                     <small>Rancang jalurmu sendiri</small>
@@ -19,8 +25,8 @@
             </a>
 
             <nav class="top-nav" aria-label="Navigasi utama">
-                <a href="{{ route('routes.index') }}">Rute saya</a>
-                <a href="{{ route('routes.create') }}">Buat rute</a>
+                <a class="{{ request()->routeIs('routes.index') ? 'is-active' : '' }}" href="{{ route('routes.index') }}">Rute saya</a>
+                <a class="{{ request()->routeIs('routes.create', 'routes.edit') ? 'is-active' : '' }}" href="{{ route('routes.create') }}">Buat rute</a>
             </nav>
 
             <span class="topbar-badge"><span></span> ROUTE PLANNER</span>

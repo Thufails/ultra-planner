@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'name',
+    'routing_mode',
     'gpx_path',
     'distance_meters',
     'elevation_gain_meters',
@@ -20,6 +21,7 @@ class Route extends Model
     protected function casts(): array
     {
         return [
+            'routing_mode' => 'string',
             'distance_meters' => 'integer',
             'elevation_gain_meters' => 'integer',
             'elevation_loss_meters' => 'integer',
