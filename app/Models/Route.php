@@ -32,6 +32,11 @@ class Route extends Model
         return $this->hasMany(RoutePoint::class)->orderBy('sequence');
     }
 
+    public function routeControlPoints(): HasMany
+    {
+        return $this->hasMany(RouteControlPoint::class)->orderBy('sequence');
+    }
+
     public function waypoints(): HasMany
     {
         return $this->hasMany(Waypoint::class)->orderBy('sequence');
