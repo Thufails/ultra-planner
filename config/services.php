@@ -51,4 +51,12 @@ return [
         ),
     ],
 
+    'elevation' => [
+        'endpoint' => env('ELEVATION_ENDPOINT', 'https://api.opentopodata.org/v1/srtm30m'),
+        'user_agent' => env(
+            'ELEVATION_USER_AGENT',
+            'UltraPlanner/1.0 (+' . env('APP_URL', 'http://localhost') . ')',
+        ),
+    ],
+
 ];

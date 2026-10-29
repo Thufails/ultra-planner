@@ -15,9 +15,95 @@ function normalizePoints(points = []) {
             latitude: Number(point.latitude),
             longitude: Number(point.longitude),
             elevation_meters: point.elevation_meters ?? null,
+            distance_from_start_meters: point.distance_from_start_meters === null || point.distance_from_start_meters === undefined
+                ? null
+                : Number(point.distance_from_start_meters),
             track_segment_index: Number(point.track_segment_index ?? 0),
         }))
         .filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
+}
+
+function renderElevationChart(container, profile) {
+    const points = profile
+        .filter((point) => point.elevation_meters !== null && point.elevation_meters !== undefined
+            && Number.isFinite(Number(point.distance_from_start_meters))
+            && Number.isFinite(Number(point.elevation_meters)))
+        .map((point) => ({
+            distance: Number(point.distance_from_start_meters),
+            elevation: Number(point.elevation_meters),
+        }));
+
+    if (points.length < 2) {
+        const placeholder = document.createElement('p');
+        placeholder.textContent = 'Profil elevasi akan tampil setelah rute memiliki sedikitnya dua titik.';
+        container.replaceChildren(placeholder);
+        return;
+    }
+
+    const namespace = 'http://www.w3.org/2000/svg';
+    const make = (tag, attributes = {}) => {
+        const element = document.createElementNS(namespace, tag);
+        Object.entries(attributes).forEach(([name, value]) => element.setAttribute(name, String(value)));
+        return element;
+    };
+    const width = 760;
+    const height = 220;
+    const left = 48;
+    const right = 18;
+    const top = 16;
+    const bottom = 37;
+    const plotWidth = width - left - right;
+    const plotHeight = height - top - bottom;
+    const totalDistance = Math.max(1, points.at(-1).distance);
+    const minimum = Math.min(...points.map((point) => point.elevation));
+    const maximum = Math.max(...points.map((point) => point.elevation));
+    const padding = Math.max(8, (maximum - minimum) * 0.12);
+    const minElevation = Math.floor((minimum - padding) / 10) * 10;
+    const maxElevation = Math.ceil((maximum + padding) / 10) * 10 || minElevation + 10;
+    const elevationRange = Math.max(10, maxElevation - minElevation);
+    const x = (distance) => left + (distance / totalDistance) * plotWidth;
+    const y = (elevation) => top + ((maxElevation - elevation) / elevationRange) * plotHeight;
+    const svg = make('svg', { viewBox: `0 0 ${width} ${height}`, class: 'elevation-svg', 'aria-hidden': 'true' });
+    const defs = make('defs');
+    const gradient = make('linearGradient', { id: 'elevation-area-fill', x1: '0', x2: '0', y1: '0', y2: '1' });
+    gradient.append(
+        make('stop', { offset: '0%', 'stop-color': '#5274f2', 'stop-opacity': '.24' }),
+        make('stop', { offset: '100%', 'stop-color': '#5274f2', 'stop-opacity': '.025' }),
+    );
+    defs.append(gradient);
+    svg.append(defs);
+
+    for (let index = 0; index <= 3; index += 1) {
+        const value = maxElevation - (elevationRange * index) / 3;
+        const lineY = top + (plotHeight * index) / 3;
+        const grid = make('line', { x1: left, x2: width - right, y1: lineY, y2: lineY, class: 'elevation-grid-line' });
+        const label = make('text', { x: left - 9, y: lineY + 4, 'text-anchor': 'end', class: 'elevation-axis-label' });
+        label.textContent = `${Math.round(value)} m`;
+        svg.append(grid, label);
+    }
+
+    const pathData = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${x(point.distance).toFixed(2)} ${y(point.elevation).toFixed(2)}`).join(' ');
+    const areaData = `${pathData} L ${x(points.at(-1).distance).toFixed(2)} ${top + plotHeight} L ${x(points[0].distance).toFixed(2)} ${top + plotHeight} Z`;
+    svg.append(make('path', { d: areaData, class: 'elevation-area' }));
+    svg.append(make('path', { d: pathData, class: 'elevation-line' }));
+    svg.append(
+        make('circle', { cx: x(points[0].distance), cy: y(points[0].elevation), r: 4.5, class: 'elevation-endpoint' }),
+        make('circle', { cx: x(points.at(-1).distance), cy: y(points.at(-1).elevation), r: 4.5, class: 'elevation-endpoint' }),
+    );
+
+    [0, 0.5, 1].forEach((fraction) => {
+        const distance = totalDistance * fraction;
+        const label = make('text', {
+            x: x(distance),
+            y: height - 10,
+            'text-anchor': fraction === 0 ? 'start' : fraction === 1 ? 'end' : 'middle',
+            class: 'elevation-axis-label',
+        });
+        label.textContent = `${(distance / 1000).toFixed(1)} km`;
+        svg.append(label);
+    });
+
+    container.replaceChildren(svg);
 }
 
 function markerIcon(index, total) {
@@ -81,6 +167,10 @@ function initializeRouteEditor() {
     const followRoadsToggle = editor.querySelector('[data-follow-roads]');
     const routingStatus = editor.querySelector('[data-routing-status]');
     const alternativesContainer = editor.querySelector('[data-route-alternatives]');
+    const elevationGainElement = editor.querySelector('[data-elevation-gain]');
+    const elevationLossElement = editor.querySelector('[data-elevation-loss]');
+    const elevationStatus = editor.querySelector('[data-elevation-status]');
+    const elevationChart = editor.querySelector('[data-elevation-chart]');
 
     const map = createMap(mapElement, config);
     initializeLocationSearch(map, config);
@@ -100,6 +190,10 @@ function initializeRouteEditor() {
     let locationWatchTimer = null;
     let bestLocationAccuracy = Number.POSITIVE_INFINITY;
     let centeredDuringLocationSearch = false;
+    let elevationProfile = [];
+    let elevationRequestGeneration = 0;
+    let elevationDebounceTimer = null;
+    let elevationCalculationPending = false;
 
     followRoadsToggle.checked = routingMode === 'foot';
 
@@ -179,7 +273,10 @@ function initializeRouteEditor() {
                     longitude: position.lng,
                 };
                 if (routingMode === 'foot') scheduleRoadRoute();
-                else render();
+                else {
+                    render();
+                    scheduleElevationPreview(controlPoints);
+                }
             });
         });
 
@@ -192,6 +289,123 @@ function initializeRouteEditor() {
         routingStatus.classList.toggle('is-error', isError);
     }
 
+    function setElevationMetrics(gain, loss) {
+        elevationGainElement.textContent = gain !== null && gain !== undefined && Number.isFinite(Number(gain))
+            ? `+${Math.round(Number(gain))} m`
+            : '—';
+        elevationLossElement.textContent = loss !== null && loss !== undefined && Number.isFinite(Number(loss))
+            ? `−${Math.round(Number(loss))} m`
+            : '—';
+    }
+
+    function clearElevation(messageText = 'Gambar rute untuk melihat perkiraan tanjakan dan turunan.') {
+        elevationProfile = [];
+        setElevationMetrics(null, null);
+        elevationStatus.textContent = messageText;
+        elevationStatus.classList.remove('is-error');
+        renderElevationChart(elevationChart, elevationProfile);
+    }
+
+    function scheduleElevationPreview(points) {
+        if (elevationDebounceTimer) window.clearTimeout(elevationDebounceTimer);
+        const requestGeneration = ++elevationRequestGeneration;
+        const routePoints = normalizePoints(points);
+
+        if (routePoints.length < 2) {
+            elevationCalculationPending = false;
+            trackPoints = routePoints;
+            clearElevation();
+            return;
+        }
+
+        trackPoints = routePoints;
+        elevationCalculationPending = true;
+        elevationProfile = [];
+        setElevationMetrics(null, null);
+        elevationStatus.textContent = 'Mengambil estimasi elevasi SRTM 30 m…';
+        elevationStatus.classList.remove('is-error');
+        renderElevationChart(elevationChart, elevationProfile);
+        elevationDebounceTimer = window.setTimeout(
+            () => loadElevationPreview(routePoints, requestGeneration),
+            1400,
+        );
+    }
+
+    async function loadElevationPreview(routePoints, requestGeneration) {
+        elevationDebounceTimer = null;
+
+        try {
+            const response = await fetch(config.elevationUrl, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                },
+                body: JSON.stringify({
+                    route_points: routePoints.map(({ latitude, longitude, track_segment_index }) => ({
+                        latitude,
+                        longitude,
+                        track_segment_index,
+                    })),
+                }),
+            });
+            const payload = await response.json().catch(() => ({}));
+
+            if (requestGeneration !== elevationRequestGeneration) return;
+            if (!response.ok) {
+                const validationMessage = Object.values(payload.errors ?? {}).flat()[0];
+                throw new Error(validationMessage ?? payload.message ?? 'Profil elevasi gagal dihitung.');
+            }
+
+            trackPoints = normalizePoints(payload.route_points ?? []);
+            elevationProfile = Array.isArray(payload.profile) ? payload.profile : [];
+            setElevationMetrics(payload.elevation_gain_meters, payload.elevation_loss_meters);
+            elevationStatus.textContent = `Estimasi ${payload.elevation_source ?? 'SRTM 30 m'} · ${elevationProfile.length.toLocaleString('id-ID')} sampel medan`;
+            elevationStatus.classList.remove('is-error');
+            renderElevationChart(elevationChart, elevationProfile);
+            render();
+        } catch (error) {
+            if (requestGeneration !== elevationRequestGeneration) return;
+
+            elevationProfile = [];
+            setElevationMetrics(null, null);
+            elevationStatus.textContent = `${error.message} Rute tetap bisa disimpan tanpa estimasi elevasi.`;
+            elevationStatus.classList.add('is-error');
+            renderElevationChart(elevationChart, elevationProfile);
+        } finally {
+            if (requestGeneration === elevationRequestGeneration) elevationCalculationPending = false;
+        }
+    }
+
+    function showStoredElevation() {
+        const storedProfile = trackPoints
+            .filter((point) => point.elevation_meters !== null && point.elevation_meters !== undefined
+                && Number.isFinite(Number(point.elevation_meters))
+                && Number.isFinite(Number(point.distance_from_start_meters)))
+            .map((point) => ({
+                distance_from_start_meters: Number(point.distance_from_start_meters),
+                elevation_meters: Number(point.elevation_meters),
+            }));
+
+        if (storedProfile.length < 2) return false;
+
+        elevationProfile = storedProfile;
+        setElevationMetrics(config.elevationGainMeters, config.elevationLossMeters);
+        elevationStatus.textContent = `Estimasi ${config.elevationSource ?? 'SRTM 30 m'} · tersimpan bersama rute`;
+        renderElevationChart(elevationChart, elevationProfile);
+
+        return true;
+    }
+
+    function cancelElevationPreview() {
+        elevationRequestGeneration += 1;
+        if (elevationDebounceTimer) window.clearTimeout(elevationDebounceTimer);
+        elevationDebounceTimer = null;
+        elevationCalculationPending = false;
+    }
+
     function selectRouteCandidate(index) {
         const candidate = routeCandidates[index];
         if (!candidate) return;
@@ -201,6 +415,7 @@ function initializeRouteEditor() {
         routedDistanceMeters = Number(candidate.distance_meters) || null;
         routeIsCurrent = true;
         render();
+        scheduleElevationPreview(trackPoints);
         const maxSnapDistance = Math.max(0, ...lastSnapDistances);
         setRoutingStatus(maxSnapDistance > 50
             ? `Jalur siap. Titik terjauh tersambung ke jalan sekitar ${Math.round(maxSnapDistance)} m dari lokasi klik.`
@@ -262,6 +477,8 @@ function initializeRouteEditor() {
     }
 
     function scheduleRoadRoute() {
+        cancelElevationPreview();
+        clearElevation('Menunggu jalur selesai dihitung sebelum mengambil elevasi.');
         if (routeDebounceTimer) window.clearTimeout(routeDebounceTimer);
         const requestGeneration = ++routeRequestGeneration;
         routeIsCurrent = false;
@@ -294,6 +511,7 @@ function initializeRouteEditor() {
             trackPoints = controlPoints.map((point) => ({ ...point }));
             routedDistanceMeters = null;
             render();
+            scheduleElevationPreview(trackPoints);
             setRoutingStatus('Garis lurus antar titik kontrol.');
         }
     });
@@ -409,13 +627,19 @@ function initializeRouteEditor() {
         }
 
         if (routingMode === 'foot') scheduleRoadRoute();
-        else render();
+        else {
+            render();
+            scheduleElevationPreview(controlPoints);
+        }
     });
 
     undoButton.addEventListener('click', () => {
         controlPoints.pop();
         if (routingMode === 'foot') scheduleRoadRoute();
-        else render();
+        else {
+            render();
+            scheduleElevationPreview(controlPoints);
+        }
         message.textContent = 'Titik kontrol terakhir dihapus. Perubahan tersimpan setelah kamu menekan Simpan.';
         message.classList.remove('is-error');
     });
@@ -424,7 +648,10 @@ function initializeRouteEditor() {
         controlPoints = [];
         trackPoints = [];
         if (routingMode === 'foot') scheduleRoadRoute();
-        else render();
+        else {
+            render();
+            scheduleElevationPreview(controlPoints);
+        }
         message.textContent = 'Semua titik kontrol dihapus dari rancangan ini.';
         message.classList.remove('is-error');
     });
@@ -444,12 +671,17 @@ function initializeRouteEditor() {
             return;
         }
 
+        if (elevationCalculationPending) {
+            showMessage('Tunggu sebentar sampai estimasi elevasi selesai dimuat.', true);
+            return;
+        }
+
         if (routingMode === 'foot' && (!routeIsCurrent || trackPoints.length < 2)) {
             showMessage('Tunggu sampai jalur mengikuti jalan selesai dihitung. Jika layanan belum tersedia, matikan opsi Ikuti jalan untuk menyimpan garis langsung.', true);
             return;
         }
 
-        const submittedTrack = routingMode === 'foot' ? trackPoints : controlPoints;
+        const submittedTrack = trackPoints.length >= 2 ? trackPoints : controlPoints;
         const payload = {
             name: nameInput.value.trim(),
             routing_mode: routingMode,
@@ -505,6 +737,10 @@ function initializeRouteEditor() {
     if (bounds.isValid()) map.fitBounds(bounds.pad(0.18), { maxZoom: 15 });
 
     render();
+    if (!showStoredElevation()) {
+        const initialElevationPoints = trackPoints.length >= 2 ? trackPoints : controlPoints;
+        if (initialElevationPoints.length >= 2) scheduleElevationPreview(initialElevationPoints);
+    }
     window.setTimeout(() => map.invalidateSize(), 0);
 }
 
@@ -624,6 +860,21 @@ function initializeRouteViewer() {
     const controlPoints = normalizePoints(config.controlPoints);
     const trackPoints = normalizePoints(config.routePoints);
     const visiblePoints = trackPoints.length > 0 ? trackPoints : controlPoints;
+    const elevationChart = document.querySelector('[data-elevation-chart]');
+    const elevationStatus = document.querySelector('[data-elevation-status]');
+    const profile = trackPoints
+        .filter((point) => point.elevation_meters !== null && point.elevation_meters !== undefined
+            && Number.isFinite(Number(point.elevation_meters))
+            && Number.isFinite(Number(point.distance_from_start_meters)))
+        .map((point) => ({
+            distance_from_start_meters: Number(point.distance_from_start_meters),
+            elevation_meters: Number(point.elevation_meters),
+        }));
+
+    if (elevationChart) renderElevationChart(elevationChart, profile);
+    if (elevationStatus && profile.length >= 2) {
+        elevationStatus.textContent = `Estimasi ${config.elevationSource ?? 'SRTM 30 m'} · tersimpan bersama rute`;
+    }
 
     if (visiblePoints.length >= 2) {
         L.polyline(

@@ -9,14 +9,12 @@
             <h1>Rute saya</h1>
             <p class="page-subtitle">Simpan jalur latihan dan siapkan rute untuk perangkatmu.</p>
         </div>
-        <a class="button button-primary" href="{{ route('routes.create') }}">
-            <span aria-hidden="true">＋</span> Buat rute
-        </a>
+        <a class="button button-primary" href="{{ route('routes.create') }}">Buat rute</a>
     </section>
 
     @if ($routes->isEmpty())
         <section class="empty-state">
-            <div class="empty-icon" aria-hidden="true">⌁</div>
+            <div class="empty-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M7 25c0-5 3-8 8-8s8-3 8-10"/><circle cx="7" cy="25" r="3"/><circle cx="23" cy="7" r="3"/></svg></div>
             <p class="eyebrow">MULAI DARI PETA</p>
             <h2>Belum ada rute tersimpan</h2>
             <p>Klik peta untuk menambahkan titik kontrol, lalu simpan rute pertamamu.</p>
@@ -27,7 +25,7 @@
             @foreach ($routes as $route)
                 <article class="route-card" data-route-card>
                     <a class="route-card-main" href="{{ route('routes.show', $route) }}">
-                        <span class="route-card-icon" aria-hidden="true">⌁</span>
+                        <span class="route-card-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M7 25c0-5 3-8 8-8s8-3 8-10"/><circle cx="7" cy="25" r="3"/><circle cx="23" cy="7" r="3"/></svg></span>
                         <span class="route-card-copy">
                             <strong>{{ $route->name }}</strong>
                             <small>Diperbarui {{ $route->updated_at->format('d M Y, H:i') }}</small>

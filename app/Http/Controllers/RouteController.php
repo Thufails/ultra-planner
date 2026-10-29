@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Route;
+use App\Services\ElevationProfileService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -37,11 +38,11 @@ class RouteController extends Controller
         return view('routes.editor', ['route' => null]);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, ElevationProfileService $elevation): JsonResponse
     {
         $validated = $request->validate($this->storeRules());
 
-        $route = DB::transaction(function () use ($validated): Route {
+        $route = DB::transaction(function () use ($validated, $elevation): Route {
             $route = Route::create([
                 'name' => $validated['name'],
                 'routing_mode' => $validated['routing_mode'] ?? 'direct',
@@ -50,7 +51,7 @@ class RouteController extends Controller
             $this->replaceControlPoints($route, $validated['control_points']);
 
             if (array_key_exists('route_points', $validated)) {
-                $this->replaceTrackPoints($route, $validated['route_points']);
+                $this->replaceTrackPoints($route, $validated['route_points'], $elevation);
             }
 
             return $route;
@@ -80,11 +81,11 @@ class RouteController extends Controller
         return view('routes.editor', compact('route'));
     }
 
-    public function update(Request $request, Route $route): JsonResponse
+    public function update(Request $request, Route $route, ElevationProfileService $elevation): JsonResponse
     {
         $validated = $request->validate($this->updateRules());
 
-        DB::transaction(function () use ($validated, $route): void {
+        DB::transaction(function () use ($validated, $route, $elevation): void {
             if (array_key_exists('name', $validated)) {
                 $route->name = $validated['name'];
                 $route->save();
@@ -103,10 +104,10 @@ class RouteController extends Controller
             }
 
             if ($trackPointsProvided) {
-                $this->replaceTrackPoints($route, $validated['route_points']);
+                $this->replaceTrackPoints($route, $validated['route_points'], $elevation);
             } elseif ($controlPointsChanged) {
                 // The old generated track no longer matches the edited control points.
-                $this->replaceTrackPoints($route, []);
+                $this->replaceTrackPoints($route, [], $elevation);
             }
 
             $route->touch();
@@ -172,13 +173,16 @@ class RouteController extends Controller
         );
     }
 
-    private function replaceTrackPoints(Route $route, array $points): void
+    private function replaceTrackPoints(Route $route, array $points, ElevationProfileService $elevation): void
     {
         $route->routePoints()->delete();
 
         if ($points === []) {
             $route->forceFill([
                 'distance_meters' => null,
+                'elevation_gain_meters' => null,
+                'elevation_loss_meters' => null,
+                'elevation_source' => null,
                 'track_points_count' => 0,
             ])->save();
 
@@ -218,8 +222,15 @@ class RouteController extends Controller
         }
 
         $route->routePoints()->createMany($normalizedPoints);
+        $elevationPointCount = collect($normalizedPoints)
+            ->filter(fn (array $point): bool => $point['elevation_meters'] !== null)
+            ->count();
+        [$elevationGain, $elevationLoss] = $elevation->calculateGainLoss($normalizedPoints);
         $route->forceFill([
             'distance_meters' => (int) round($distanceFromStart),
+            'elevation_gain_meters' => $elevationPointCount >= 2 ? $elevationGain : null,
+            'elevation_loss_meters' => $elevationPointCount >= 2 ? $elevationLoss : null,
+            'elevation_source' => $elevationPointCount >= 2 ? 'SRTM 30m' : null,
             'track_points_count' => count($normalizedPoints),
         ])->save();
     }

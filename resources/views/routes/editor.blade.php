@@ -13,6 +13,7 @@
             'latitude' => (float) $point->latitude,
             'longitude' => (float) $point->longitude,
             'elevation_meters' => $point->elevation_meters === null ? null : (float) $point->elevation_meters,
+            'distance_from_start_meters' => $point->distance_from_start_meters === null ? null : (int) $point->distance_from_start_meters,
             'track_segment_index' => (int) $point->track_segment_index,
         ])->values()
         : [];
@@ -23,7 +24,7 @@
 @section('content')
     <section class="editor-heading">
         <div>
-            <a class="back-link" href="{{ route('routes.index') }}">← Kembali ke rute saya</a>
+            <a class="back-link" href="{{ route('routes.index') }}">Kembali ke rute saya</a>
             <p class="eyebrow">ROUTE BUILDER / {{ $isEditing ? 'EDIT' : 'RUTE BARU' }}</p>
             <h1>{{ $isEditing ? 'Edit rute' : 'Rancang rute' }}</h1>
             <p class="page-subtitle">Klik peta untuk menambahkan titik kontrol. Geser marker untuk mengubah posisinya.</p>
@@ -34,6 +35,7 @@
     </section>
 
     <section class="editor-card" data-route-editor>
+        <div class="editor-sidebar">
         <div class="editor-toolbar">
             <div class="route-name-field">
                 <label for="route-name">Nama rute</label>
@@ -42,7 +44,7 @@
             </div>
             <div class="toolbar-actions">
                 <button class="button button-secondary" type="button" data-locate>◎ Lokasi saya</button>
-                <button class="button button-secondary" type="button" data-undo disabled>↶ Undo</button>
+                <button class="button button-secondary" type="button" data-undo disabled>Batalkan</button>
                 <button class="button button-quiet" type="button" data-clear disabled>Hapus semua</button>
                 <button class="button button-primary" type="button" data-save>
                     {{ $isEditing ? 'Simpan perubahan' : 'Simpan rute' }}
@@ -54,7 +56,7 @@
             <form class="location-search" data-location-search role="search">
                 <label class="location-search-label" for="location-query">Cari daerah atau tempat</label>
                 <div class="location-search-controls">
-                    <span class="location-search-icon" aria-hidden="true">⌕</span>
+                    <span class="location-search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></span>
                     <input id="location-query" name="q" type="search" maxlength="120" autocomplete="off"
                         placeholder="Contoh: Kota Batu, Jawa Timur" aria-controls="location-search-results">
                     <button class="button button-primary" type="submit" data-location-search-button>Cari</button>
@@ -69,17 +71,31 @@
 
         <div class="route-metrics" aria-live="polite">
             <article class="metric-card">
-                <span class="metric-icon metric-icon-distance" aria-hidden="true">↗</span>
+                <span class="metric-icon metric-icon-distance" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 17.5c2.5-5 5.5-7.5 8-6s4.5 3 8-5"/><circle cx="4" cy="17.5" r="1.5"/><circle cx="20" cy="6.5" r="1.5"/></svg></span>
                 <span class="metric-copy">
                     <strong data-distance>0.0 km</strong>
                     <small data-distance-label>perkiraan jarak garis</small>
                 </span>
             </article>
             <article class="metric-card">
-                <span class="metric-icon metric-icon-points" aria-hidden="true">⌖</span>
+                <span class="metric-icon metric-icon-points" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2"/><path d="M12 2v2.5M22 12h-2.5M12 22v-2.5M2 12h2.5"/></svg></span>
                 <span class="metric-copy">
                     <strong data-point-count>0</strong>
                     <small>titik kontrol</small>
+                </span>
+            </article>
+            <article class="metric-card">
+                <span class="metric-icon metric-icon-gain" aria-hidden="true">+</span>
+                <span class="metric-copy">
+                    <strong data-elevation-gain>{{ $route?->elevation_gain_meters !== null ? '+' . number_format($route->elevation_gain_meters) . ' m' : '—' }}</strong>
+                    <small>perkiraan tanjakan</small>
+                </span>
+            </article>
+            <article class="metric-card">
+                <span class="metric-icon metric-icon-loss" aria-hidden="true">−</span>
+                <span class="metric-copy">
+                    <strong data-elevation-loss>{{ $route?->elevation_loss_meters !== null ? '−' . number_format($route->elevation_loss_meters) . ' m' : '—' }}</strong>
+                    <small>perkiraan turunan</small>
                 </span>
             </article>
         </div>
@@ -97,6 +113,20 @@
                 {{ $route?->routing_mode === 'foot' ? 'Jalur tersimpan mengikuti jalan.' : 'Garis lurus antar titik kontrol.' }}
             </div>
             <div class="route-alternatives" data-route-alternatives hidden aria-label="Pilihan jalur"></div>
+        </div>
+
+        <section class="elevation-panel" aria-labelledby="elevation-heading">
+            <div class="elevation-panel-heading">
+                <h2 id="elevation-heading">Profil elevasi</h2>
+                <p data-elevation-status role="status" aria-live="polite">
+                    {{ $route?->elevation_source ? 'Estimasi dari ' . $route->elevation_source . ' · Data terrain 30 m' : 'Gambar rute untuk melihat perkiraan tanjakan dan turunan.' }}
+                </p>
+            </div>
+            <div class="elevation-chart" data-elevation-chart role="img" aria-label="Grafik profil elevasi rute">
+                <p>Profil elevasi akan tampil setelah rute memiliki sedikitnya dua titik.</p>
+            </div>
+            <p class="elevation-disclaimer">Estimasi terrain SRTM 30 m melalui OpenTopoData, bukan pengukuran GPS atau altimeter barometrik. Koordinat rute dikirim ke layanan tersebut untuk mengambil sampel elevasi.</p>
+        </section>
         </div>
 
         <div class="map-frame">
@@ -123,6 +153,7 @@
             'updateUrl' => $route ? route('routes.update', $route) : null,
             'searchUrl' => route('routes.location-search'),
             'previewUrl' => route('routes.preview'),
+            'elevationUrl' => route('routes.elevation-preview'),
             'showUrlTemplate' => url('/routes/__ROUTE_ID__'),
             'initialCenter' => [-2.5, 118],
             'initialZoom' => 5,
@@ -130,6 +161,9 @@
             'routePoints' => $trackPoints,
             'routingMode' => $route?->routing_mode ?? 'direct',
             'distanceMeters' => $route?->distance_meters,
+            'elevationGainMeters' => $route?->elevation_gain_meters,
+            'elevationLossMeters' => $route?->elevation_loss_meters,
+            'elevationSource' => $route?->elevation_source,
         ]);
     </script>
 @endpush
