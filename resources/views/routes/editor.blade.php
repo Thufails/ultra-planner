@@ -35,7 +35,6 @@
     </section>
 
     <section class="editor-card" data-route-editor>
-        <div class="editor-sidebar">
         <div class="editor-toolbar">
             <div class="route-name-field">
                 <label for="route-name">Nama rute</label>
@@ -115,6 +114,15 @@
             <div class="route-alternatives" data-route-alternatives hidden aria-label="Pilihan jalur"></div>
         </div>
 
+        <div class="map-frame">
+            <div id="route-map" aria-label="Peta untuk menggambar rute"></div>
+            <div class="map-legend">
+                <span><i class="legend-dot legend-start"></i> Mulai</span>
+                <span><i class="legend-dot legend-control"></i> Titik kontrol</span>
+                <span><i class="legend-dot legend-finish"></i> Selesai</span>
+            </div>
+        </div>
+
         <section class="elevation-panel" aria-labelledby="elevation-heading">
             <div class="elevation-panel-heading">
                 <h2 id="elevation-heading">Profil elevasi</h2>
@@ -127,16 +135,6 @@
             </div>
             <p class="elevation-disclaimer">Estimasi terrain SRTM 30 m melalui OpenTopoData, bukan pengukuran GPS atau altimeter barometrik. Koordinat rute dikirim ke layanan tersebut untuk mengambil sampel elevasi.</p>
         </section>
-        </div>
-
-        <div class="map-frame">
-            <div id="route-map" aria-label="Peta untuk menggambar rute"></div>
-            <div class="map-legend">
-                <span><i class="legend-dot legend-start"></i> Mulai</span>
-                <span><i class="legend-dot legend-control"></i> Titik kontrol</span>
-                <span><i class="legend-dot legend-finish"></i> Selesai</span>
-            </div>
-        </div>
 
         <div class="editor-footer">
             <p class="map-note" data-map-note>Rute dihitung dari titik kontrol. Saat Ikuti jalan aktif, koordinat dikirim dan dicatat pada log layanan routing FOSSGIS. <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noreferrer">Perbaiki data peta</a> · © OpenStreetMap contributors.</p>

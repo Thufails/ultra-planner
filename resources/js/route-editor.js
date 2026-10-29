@@ -752,7 +752,6 @@ function initializeLocationSearch(map, config) {
     const searchButton = form.querySelector('[data-location-search-button]');
     const resultsContainer = form.querySelector('[data-location-search-results]');
     const status = form.querySelector('[data-location-search-status]');
-
     input.addEventListener('input', () => {
         resultsContainer.hidden = true;
         resultsContainer.replaceChildren();
@@ -836,13 +835,19 @@ function selectSearchResult(map, result) {
     const latitude = Number(result.latitude);
     const longitude = Number(result.longitude);
     const box = Array.isArray(result.bounding_box) ? result.bounding_box.map(Number) : [];
+    const broadPlaceTypes = new Set(['country', 'state', 'province', 'region', 'continent']);
 
     if (box.length === 4 && box.every(Number.isFinite)) {
         const [south, north, west, east] = box;
         const bounds = L.latLngBounds([south, west], [north, east]);
 
         if (bounds.isValid()) {
-            map.fitBounds(bounds.pad(0.08), { maxZoom: 15 });
+            if (!broadPlaceTypes.has(result.place_type)) {
+                map.setView([latitude, longitude], 10, { animate: true });
+            } else {
+                map.fitBounds(bounds.pad(0.08), { maxZoom: 15, animate: true });
+            }
+
             return;
         }
     }

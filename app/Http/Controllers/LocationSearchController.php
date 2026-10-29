@@ -68,6 +68,7 @@ class LocationSearchController extends Controller
                             'label' => (string) $place['display_name'],
                             'latitude' => (float) $place['lat'],
                             'longitude' => (float) $place['lon'],
+                            'place_type' => (string) ($place['addresstype'] ?? $place['type'] ?? ''),
                             'bounding_box' => count($boundingBox) === 4 ? $boundingBox : null,
                         ];
                     })
