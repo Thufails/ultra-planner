@@ -6,11 +6,12 @@ use App\Models\Route;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
 
 class RouteController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse|View
     {
         $routes = Route::query()
             ->select([
@@ -24,7 +25,16 @@ class RouteController extends Controller
             ->orderByDesc('updated_at')
             ->paginate(15);
 
+        if (! $request->expectsJson()) {
+            return view('routes.index', compact('routes'));
+        }
+
         return response()->json($routes);
+    }
+
+    public function create(): View
+    {
+        return view('routes.editor', ['route' => null]);
     }
 
     public function store(Request $request): JsonResponse
@@ -51,11 +61,22 @@ class RouteController extends Controller
         );
     }
 
-    public function show(Route $route): JsonResponse
+    public function show(Request $request, Route $route): JsonResponse|View
     {
-        return response()->json(
-            $route->load(['routeControlPoints', 'routePoints']),
-        );
+        $route->load(['routeControlPoints', 'routePoints']);
+
+        if (! $request->expectsJson()) {
+            return view('routes.show', compact('route'));
+        }
+
+        return response()->json($route);
+    }
+
+    public function edit(Route $route): View
+    {
+        $route->load(['routeControlPoints', 'routePoints']);
+
+        return view('routes.editor', compact('route'));
     }
 
     public function update(Request $request, Route $route): JsonResponse
