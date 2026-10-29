@@ -233,6 +233,7 @@ function initializeRouteEditor() {
     const undoButton = editor.querySelector('[data-undo]');
     const clearButton = editor.querySelector('[data-clear]');
     const saveButton = editor.querySelector('[data-save]');
+    const saveExportButton = editor.querySelector('[data-save-export]');
     const message = editor.querySelector('[data-form-message]');
     const countElement = editor.querySelector('[data-point-count]');
     const distanceElement = editor.querySelector('[data-distance]');
@@ -729,7 +730,7 @@ function initializeRouteEditor() {
         message.classList.remove('is-error');
     });
 
-    saveButton.addEventListener('click', async () => {
+    const saveRoute = async (exportAfterSave = false) => {
         message.textContent = '';
         message.classList.remove('is-error');
 
@@ -768,7 +769,9 @@ function initializeRouteEditor() {
         };
 
         saveButton.disabled = true;
+        saveExportButton.disabled = true;
         saveButton.textContent = 'Menyimpan…';
+        saveExportButton.textContent = exportAfterSave ? 'Menyimpan & menyiapkan…' : 'Simpan & unduh GPX';
 
         try {
             const isEditing = config.mode === 'edit';
@@ -789,15 +792,52 @@ function initializeRouteEditor() {
                 throw new Error(validationMessage ?? result.message ?? 'Rute gagal disimpan. Coba lagi.');
             }
 
-            const routeId = result.id ?? config.updateUrl.split('/').pop();
-            window.location.assign(config.showUrlTemplate.replace('__ROUTE_ID__', routeId));
+            const routeId = result.id ?? (config.updateUrl ? config.updateUrl.split('/').pop() : null);
+            if (!routeId) throw new Error('Rute tersimpan, tetapi ID rute tidak ditemukan.');
+
+            if (!exportAfterSave) {
+                window.location.assign(config.showUrlTemplate.replace('__ROUTE_ID__', routeId));
+                return;
+            }
+
+            config.mode = 'edit';
+            config.updateUrl = config.updateUrlTemplate.replace('__ROUTE_ID__', routeId);
+
+            const exportUrl = config.gpxUrlTemplate.replace('__ROUTE_ID__', routeId);
+            const exportResponse = await fetch(exportUrl, {
+                headers: { Accept: 'application/gpx+xml' },
+                credentials: 'same-origin',
+            });
+
+            if (!exportResponse.ok) {
+                const exportError = await exportResponse.json().catch(() => ({}));
+                throw new Error(exportError.message ?? 'Rute tersimpan, tetapi file GPX gagal diunduh. Coba lagi.');
+            }
+
+            const disposition = exportResponse.headers.get('Content-Disposition') ?? '';
+            const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? 'rute.gpx';
+            const fileUrl = URL.createObjectURL(await exportResponse.blob());
+            const downloadLink = document.createElement('a');
+            downloadLink.href = fileUrl;
+            downloadLink.download = filename;
+            document.body.append(downloadLink);
+            downloadLink.click();
+            downloadLink.remove();
+            window.setTimeout(() => URL.revokeObjectURL(fileUrl), 1000);
+
+            showMessage('Rute tersimpan dan file GPX berhasil diunduh.');
         } catch (error) {
             showMessage(error.message || 'Terjadi kendala saat menyimpan rute.', true);
         } finally {
             saveButton.disabled = false;
+            saveExportButton.disabled = false;
             saveButton.textContent = config.mode === 'edit' ? 'Simpan perubahan' : 'Simpan rute';
+            saveExportButton.textContent = 'Simpan & unduh GPX';
         }
-    });
+    };
+
+    saveButton.addEventListener('click', () => saveRoute());
+    saveExportButton.addEventListener('click', () => saveRoute(true));
 
     function showMessage(text, isError = false) {
         message.textContent = text;

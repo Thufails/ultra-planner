@@ -23,10 +23,7 @@
             <h1>{{ $route->name }}</h1>
             <p class="page-subtitle">Diperbarui {{ $route->updated_at->format('d M Y, H:i') }}</p>
         </div>
-        <div class="toolbar-actions">
-            <a class="button button-secondary" href="{{ route('routes.export.gpx', $route) }}">Unduh GPX</a>
-            <a class="button button-primary" href="{{ route('routes.edit', $route) }}">Edit rute</a>
-        </div>
+        <a class="button button-primary" href="{{ route('routes.edit', $route) }}">Edit rute</a>
     </section>
 
     <section class="detail-stats">

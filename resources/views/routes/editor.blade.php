@@ -45,6 +45,7 @@
                 <button class="button button-secondary" type="button" data-locate>◎ Lokasi saya</button>
                 <button class="button button-secondary" type="button" data-undo disabled>Batalkan</button>
                 <button class="button button-quiet" type="button" data-clear disabled>Hapus semua</button>
+                <button class="button button-secondary" type="button" data-save-export>Simpan &amp; unduh GPX</button>
                 <button class="button button-primary" type="button" data-save>
                     {{ $isEditing ? 'Simpan perubahan' : 'Simpan rute' }}
                 </button>
@@ -152,6 +153,8 @@
             'mode' => $isEditing ? 'edit' : 'create',
             'storeUrl' => route('routes.store'),
             'updateUrl' => $route ? route('routes.update', $route) : null,
+            'updateUrlTemplate' => url('/routes/__ROUTE_ID__'),
+            'gpxUrlTemplate' => url('/routes/__ROUTE_ID__/export/gpx'),
             'searchUrl' => route('routes.location-search'),
             'previewUrl' => route('routes.preview'),
             'elevationUrl' => route('routes.elevation-preview'),
