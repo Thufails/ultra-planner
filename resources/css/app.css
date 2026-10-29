@@ -263,17 +263,24 @@ h1 { margin: 0; color: var(--ink); font-family: var(--font-display); font-size: 
 .metric-copy small { color: #74819a; font-size: 13px; }
 .routing-options { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 0 22px 16px; }
 .elevation-panel { margin: 0 22px 18px; padding: 19px 20px 14px; border: 1px solid #e4eafa; border-radius: 14px; background: #fff; }
-.elevation-panel-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; margin-bottom: 13px; }
+.elevation-panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 13px; }
 .elevation-panel-heading h2 { margin: 0; color: #263958; font-size: 17px; font-weight: 650; }
+.elevation-panel-meta { display: flex; align-items: center; justify-content: flex-end; gap: 20px; }
 .elevation-panel-heading p { margin: 0; color: #74819a; font-size: 13px; }
-.elevation-chart { min-height: 185px; display: grid; place-items: center; overflow: hidden; border-radius: 10px; background: linear-gradient(180deg, #f8faff, #fbfdff); }
+.elevation-gain-summary { display: flex; align-items: baseline; gap: 6px; color: #74819a; white-space: nowrap; }
+.elevation-gain-summary strong { color: #ed9200; font-size: 15px; font-weight: 700; }
+.elevation-chart { position: relative; min-height: 230px; display: block; overflow: visible; border-radius: 10px; background: #fff; }
 .elevation-chart > p { margin: 0; padding: 22px; color: #8491a8; font-size: 14px; text-align: center; }
-.elevation-svg { width: 100%; height: auto; display: block; }
-.elevation-grid-line { stroke: #e1e7f1; stroke-width: 1; }
-.elevation-axis-label { fill: #7a879d; font-family: inherit; font-size: 12px; }
-.elevation-area { fill: url(#elevation-area-fill); }
-.elevation-line { fill: none; stroke: #4266ed; stroke-linecap: round; stroke-linejoin: round; stroke-width: 3; }
-.elevation-endpoint { fill: #4266ed; stroke: #fff; stroke-width: 2; }
+.elevation-svg { width: 100%; height: 280px; display: block; overflow: visible; touch-action: pan-y; }
+.elevation-grid-line { stroke: #edf0f4; stroke-width: 1; }
+.elevation-axis-label { fill: #58677e; font-family: inherit; font-size: 12px; }
+.elevation-line { fill: none; stroke: #ef9400; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2.6; }
+.elevation-crosshair { stroke: #c7cbd2; stroke-width: 1.2; }
+.elevation-active-point { fill: #ef9400; stroke: #fff; stroke-width: 2.2; }
+.elevation-tooltip { position: absolute; top: 14px; z-index: 2; display: grid; gap: 2px; min-width: 135px; padding: 10px 12px; transform: translateX(-50%); border: 1px solid #e4e7ed; border-radius: 7px; background: #fff; box-shadow: 0 8px 20px #15264b1c; pointer-events: none; }
+.elevation-tooltip[hidden] { display: none; }
+.elevation-tooltip strong { color: #263246; font-size: 14px; font-weight: 650; white-space: nowrap; }
+.elevation-tooltip span { color: #ef9400; font-size: 14px; white-space: nowrap; }
 .elevation-disclaimer { margin: 10px 0 0; color: #8491a8; font-size: 12px; line-height: 1.5; }
 .routing-toggle { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; }
 .routing-toggle input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
@@ -404,10 +411,12 @@ h1 { margin: 0; color: var(--ink); font-family: var(--font-display); font-size: 
     .location-search-meta small { text-align: left; }
     .route-metrics { padding: 0 16px 14px; gap: 8px; }
     .elevation-panel { margin: 0 16px 14px; padding: 15px 13px 12px; }
-    .elevation-panel-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
+    .elevation-panel-heading { align-items: flex-start; flex-direction: column; gap: 6px; }
+    .elevation-panel-meta { align-items: flex-start; flex-direction: column; gap: 4px; }
     .elevation-panel-heading h2 { font-size: 16px; }
     .elevation-panel-heading p { font-size: 12px; }
-    .elevation-chart { min-height: 150px; }
+    .elevation-chart { min-height: 205px; }
+    .elevation-svg { height: 235px; }
     .elevation-disclaimer { font-size: 11px; }
     .routing-options { align-items: flex-start; flex-direction: column; padding: 0 16px 14px; }
     .metric-card { min-height: 66px; gap: 9px; padding: 10px; }

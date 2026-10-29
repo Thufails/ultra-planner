@@ -33,10 +33,13 @@ function renderElevationChart(container, profile) {
             elevation: Number(point.elevation_meters),
         }));
 
+    const totalGainElement = container.closest('.elevation-panel')?.querySelector('[data-elevation-total-gain]');
+
     if (points.length < 2) {
         const placeholder = document.createElement('p');
         placeholder.textContent = 'Profil elevasi akan tampil setelah rute memiliki sedikitnya dua titik.';
         container.replaceChildren(placeholder);
+        if (totalGainElement) totalGainElement.textContent = '—';
         return;
     }
 
@@ -46,64 +49,134 @@ function renderElevationChart(container, profile) {
         Object.entries(attributes).forEach(([name, value]) => element.setAttribute(name, String(value)));
         return element;
     };
-    const width = 760;
-    const height = 220;
-    const left = 48;
-    const right = 18;
-    const top = 16;
-    const bottom = 37;
+    const width = 1000;
+    const height = 280;
+    const left = 64;
+    const right = 20;
+    const top = 20;
+    const bottom = 42;
     const plotWidth = width - left - right;
     const plotHeight = height - top - bottom;
-    const totalDistance = Math.max(1, points.at(-1).distance);
+    const totalDistance = Math.max(1, ...points.map((point) => point.distance));
     const minimum = Math.min(...points.map((point) => point.elevation));
     const maximum = Math.max(...points.map((point) => point.elevation));
-    const padding = Math.max(8, (maximum - minimum) * 0.12);
-    const minElevation = Math.floor((minimum - padding) / 10) * 10;
-    const maxElevation = Math.ceil((maximum + padding) / 10) * 10 || minElevation + 10;
-    const elevationRange = Math.max(10, maxElevation - minElevation);
+    const rawStep = Math.max(1, (maximum - minimum) / 4);
+    const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+    const normalizedStep = rawStep / magnitude;
+    const step = (normalizedStep <= 1 ? 1 : normalizedStep <= 2 ? 2 : normalizedStep <= 5 ? 5 : 10) * magnitude;
+    let minElevation = Math.floor(minimum / step) * step;
+    let maxElevation = Math.ceil(maximum / step) * step;
+    if (minElevation === maxElevation) {
+        minElevation -= step;
+        maxElevation += step;
+    }
+    const elevationRange = maxElevation - minElevation;
     const x = (distance) => left + (distance / totalDistance) * plotWidth;
     const y = (elevation) => top + ((maxElevation - elevation) / elevationRange) * plotHeight;
-    const svg = make('svg', { viewBox: `0 0 ${width} ${height}`, class: 'elevation-svg', 'aria-hidden': 'true' });
-    const defs = make('defs');
-    const gradient = make('linearGradient', { id: 'elevation-area-fill', x1: '0', x2: '0', y1: '0', y2: '1' });
-    gradient.append(
-        make('stop', { offset: '0%', 'stop-color': '#5274f2', 'stop-opacity': '.24' }),
-        make('stop', { offset: '100%', 'stop-color': '#5274f2', 'stop-opacity': '.025' }),
-    );
-    defs.append(gradient);
-    svg.append(defs);
+    const svg = make('svg', {
+        viewBox: `0 0 ${width} ${height}`,
+        class: 'elevation-svg',
+        preserveAspectRatio: 'none',
+        'aria-hidden': 'true',
+    });
 
-    for (let index = 0; index <= 3; index += 1) {
-        const value = maxElevation - (elevationRange * index) / 3;
-        const lineY = top + (plotHeight * index) / 3;
+    for (let index = 0; index <= 4; index += 1) {
+        const value = maxElevation - step * index;
+        const lineY = y(value);
         const grid = make('line', { x1: left, x2: width - right, y1: lineY, y2: lineY, class: 'elevation-grid-line' });
         const label = make('text', { x: left - 9, y: lineY + 4, 'text-anchor': 'end', class: 'elevation-axis-label' });
         label.textContent = `${Math.round(value)} m`;
         svg.append(grid, label);
     }
 
-    const pathData = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${x(point.distance).toFixed(2)} ${y(point.elevation).toFixed(2)}`).join(' ');
-    const areaData = `${pathData} L ${x(points.at(-1).distance).toFixed(2)} ${top + plotHeight} L ${x(points[0].distance).toFixed(2)} ${top + plotHeight} Z`;
-    svg.append(make('path', { d: areaData, class: 'elevation-area' }));
+    const mappedPoints = points.map((point) => ({ ...point, x: x(point.distance), y: y(point.elevation) }));
+    let pathData = `M ${mappedPoints[0].x.toFixed(2)} ${mappedPoints[0].y.toFixed(2)}`;
+    for (let index = 0; index < mappedPoints.length - 1; index += 1) {
+        const previous = mappedPoints[Math.max(0, index - 1)];
+        const current = mappedPoints[index];
+        const next = mappedPoints[index + 1];
+        const following = mappedPoints[Math.min(mappedPoints.length - 1, index + 2)];
+        pathData += ` C ${(current.x + (next.x - previous.x) / 6).toFixed(2)} ${(current.y + (next.y - previous.y) / 6).toFixed(2)}, ${(next.x - (following.x - current.x) / 6).toFixed(2)} ${(next.y - (following.y - current.y) / 6).toFixed(2)}, ${next.x.toFixed(2)} ${next.y.toFixed(2)}`;
+    }
     svg.append(make('path', { d: pathData, class: 'elevation-line' }));
-    svg.append(
-        make('circle', { cx: x(points[0].distance), cy: y(points[0].elevation), r: 4.5, class: 'elevation-endpoint' }),
-        make('circle', { cx: x(points.at(-1).distance), cy: y(points.at(-1).elevation), r: 4.5, class: 'elevation-endpoint' }),
-    );
 
-    [0, 0.5, 1].forEach((fraction) => {
+    const crosshair = make('line', { x1: left, x2: left, y1: top, y2: top + plotHeight, class: 'elevation-crosshair', visibility: 'hidden' });
+    const activePoint = make('circle', { cx: left, cy: top, r: 5, class: 'elevation-active-point', visibility: 'hidden' });
+    svg.append(crosshair, activePoint);
+
+    const distanceTickCount = 8;
+    for (let index = 0; index <= distanceTickCount; index += 1) {
+        const fraction = index / distanceTickCount;
         const distance = totalDistance * fraction;
         const label = make('text', {
             x: x(distance),
             y: height - 10,
-            'text-anchor': fraction === 0 ? 'start' : fraction === 1 ? 'end' : 'middle',
+            'text-anchor': index === 0 ? 'start' : index === distanceTickCount ? 'end' : 'middle',
             class: 'elevation-axis-label',
         });
         label.textContent = `${(distance / 1000).toFixed(1)} km`;
         svg.append(label);
-    });
+    }
 
-    container.replaceChildren(svg);
+    const tooltip = document.createElement('div');
+    tooltip.className = 'elevation-tooltip';
+    tooltip.hidden = true;
+    const tooltipDistance = document.createElement('strong');
+    const tooltipElevation = document.createElement('span');
+    tooltip.append(tooltipDistance, tooltipElevation);
+    container.replaceChildren(svg, tooltip);
+
+    let gainAnchor = points[0].elevation;
+    let totalGain = 0;
+    points.slice(1).forEach((point) => {
+        const change = point.elevation - gainAnchor;
+        if (change >= 3) {
+            totalGain += change;
+            gainAnchor = point.elevation;
+        } else if (change <= -3) {
+            gainAnchor = point.elevation;
+        }
+    });
+    if (totalGainElement) totalGainElement.textContent = `${Math.round(totalGain).toLocaleString('id-ID')} m`;
+
+    const showNearestPoint = (event) => {
+        const bounds = svg.getBoundingClientRect();
+        if (bounds.width === 0) return;
+
+        const pointerX = left + Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)) * plotWidth;
+        let low = 0;
+        let high = mappedPoints.length - 1;
+        while (low < high) {
+            const middle = Math.floor((low + high) / 2);
+            if (mappedPoints[middle].x < pointerX) low = middle + 1;
+            else high = middle;
+        }
+        const nearestIndex = low > 0
+            && Math.abs(mappedPoints[low - 1].x - pointerX) < Math.abs(mappedPoints[low].x - pointerX)
+            ? low - 1
+            : low;
+        const point = mappedPoints[nearestIndex];
+
+        crosshair.setAttribute('x1', point.x);
+        crosshair.setAttribute('x2', point.x);
+        crosshair.setAttribute('visibility', 'visible');
+        activePoint.setAttribute('cx', point.x);
+        activePoint.setAttribute('cy', point.y);
+        activePoint.setAttribute('visibility', 'visible');
+        tooltipDistance.textContent = `Jarak: ${(point.distance / 1000).toFixed(2)} km`;
+        tooltipElevation.textContent = `Elevasi: ${Math.round(point.elevation)} m`;
+        tooltip.hidden = false;
+        const tooltipLeft = ((point.x - left) / plotWidth) * bounds.width;
+        tooltip.style.left = `${Math.max(72, Math.min(bounds.width - 72, tooltipLeft))}px`;
+    };
+
+    svg.addEventListener('pointermove', showNearestPoint);
+    svg.addEventListener('pointerdown', showNearestPoint);
+    svg.addEventListener('pointerleave', () => {
+        crosshair.setAttribute('visibility', 'hidden');
+        activePoint.setAttribute('visibility', 'hidden');
+        tooltip.hidden = true;
+    });
 }
 
 function markerIcon(index, total) {

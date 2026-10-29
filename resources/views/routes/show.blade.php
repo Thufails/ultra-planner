@@ -23,7 +23,10 @@
             <h1>{{ $route->name }}</h1>
             <p class="page-subtitle">Diperbarui {{ $route->updated_at->format('d M Y, H:i') }}</p>
         </div>
-        <a class="button button-primary" href="{{ route('routes.edit', $route) }}">Edit rute</a>
+        <div class="toolbar-actions">
+            <a class="button button-secondary" href="{{ route('routes.export.gpx', $route) }}">Unduh GPX</a>
+            <a class="button button-primary" href="{{ route('routes.edit', $route) }}">Edit rute</a>
+        </div>
     </section>
 
     <section class="detail-stats">
@@ -37,9 +40,12 @@
     <section class="elevation-panel detail-elevation-panel" aria-labelledby="elevation-heading">
         <div class="elevation-panel-heading">
             <h2 id="elevation-heading">Profil elevasi</h2>
-            <p data-elevation-status role="status" aria-live="polite">
-                {{ $route->elevation_source ? 'Estimasi dari ' . $route->elevation_source . ' · Data terrain 30 m' : 'Rute ini belum memiliki data elevasi.' }}
-            </p>
+            <div class="elevation-panel-meta">
+                <p data-elevation-status role="status" aria-live="polite">
+                    {{ $route->elevation_source ? 'Estimasi dari ' . $route->elevation_source . ' · Data terrain 30 m' : 'Rute ini belum memiliki data elevasi.' }}
+                </p>
+                <p class="elevation-gain-summary">Total tanjakan <strong data-elevation-total-gain>{{ $route->elevation_gain_meters !== null ? number_format($route->elevation_gain_meters) . ' m' : '—' }}</strong></p>
+            </div>
         </div>
         <div class="elevation-chart" data-elevation-chart role="img" aria-label="Grafik profil elevasi rute">
             <p>Profil elevasi belum tersedia untuk rute ini.</p>

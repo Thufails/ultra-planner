@@ -126,9 +126,12 @@
         <section class="elevation-panel" aria-labelledby="elevation-heading">
             <div class="elevation-panel-heading">
                 <h2 id="elevation-heading">Profil elevasi</h2>
-                <p data-elevation-status role="status" aria-live="polite">
-                    {{ $route?->elevation_source ? 'Estimasi dari ' . $route->elevation_source . ' · Data terrain 30 m' : 'Gambar rute untuk melihat perkiraan tanjakan dan turunan.' }}
-                </p>
+                <div class="elevation-panel-meta">
+                    <p data-elevation-status role="status" aria-live="polite">
+                        {{ $route?->elevation_source ? 'Estimasi dari ' . $route->elevation_source . ' · Data terrain 30 m' : 'Gambar rute untuk melihat perkiraan tanjakan dan turunan.' }}
+                    </p>
+                    <p class="elevation-gain-summary">Total tanjakan <strong data-elevation-total-gain>—</strong></p>
+                </div>
             </div>
             <div class="elevation-chart" data-elevation-chart role="img" aria-label="Grafik profil elevasi rute">
                 <p>Profil elevasi akan tampil setelah rute memiliki sedikitnya dua titik.</p>
