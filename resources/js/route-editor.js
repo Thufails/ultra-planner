@@ -1019,6 +1019,12 @@ function initializeRouteEditor() {
     }
 
     followRoadsToggle.addEventListener('change', () => {
+        if (followRoadsToggle.checked && controlPoints.length > 40) {
+            followRoadsToggle.checked = false;
+            setRoutingStatus('Ikuti jalan dibatasi 40 titik kontrol per permintaan. Kurangi titik atau lanjutkan dengan garis langsung.', true);
+            return;
+        }
+
         routingMode = followRoadsToggle.checked ? 'foot' : 'direct';
         routeRequestGeneration += 1;
         if (routeDebounceTimer) window.clearTimeout(routeDebounceTimer);
@@ -1216,8 +1222,8 @@ function initializeRouteEditor() {
             return;
         }
 
-        if (controlPoints.length >= 40) {
-            setRoutingStatus('Maksimal 40 titik kontrol untuk satu rute.');
+        if (routingMode === 'foot' && controlPoints.length >= 40) {
+            setRoutingStatus('Ikuti jalan dibatasi 40 titik kontrol per permintaan. Matikan Ikuti jalan untuk menambah titik dengan garis langsung.', true);
             return;
         }
 
