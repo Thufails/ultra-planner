@@ -1,86 +1,86 @@
 # 🏔️ Ultra Planner
 
-Web planner untuk merancang jalur lari trail dan ultra di peta, melihat ringkasan medan, menyimpan rute, lalu mengunduhnya sebagai file GPX.
+A web planner for designing trail and ultrarunning routes on a map, reviewing terrain estimates, saving routes, and downloading them as GPX files.
 
-## 🗺️ Fitur
+## 🗺️ Features
 
-- Beranda dan halaman **Rute Saya** untuk membuka, membuat, mengedit, dan menghapus rute.
-- Peta interaktif berbasis Leaflet dengan peta OpenStreetMap.
-- Penentuan lokasi melalui pencarian nama tempat dan fitur **Lokasi saya** pada browser.
-- Dua cara menggambar rute:
-  - **Garis langsung** menghubungkan titik kontrol sesuai urutan. Mode ini tidak dibatasi 40 titik kontrol.
-  - **Ikuti jalan** meminta layanan routing publik menghitung jalur pejalan kaki. Setiap permintaan dibatasi maksimal 40 titik kontrol.
-- Jarak lintasan, jumlah titik kontrol, serta checkpoint otomatis setiap 5 km dan titik finis.
-- Estimasi elevasi dan grafik profil dari data SRTM 30 m melalui OpenTopoData.
-- Waypoint manual pada rute tersimpan dengan jenis **Water station**, **Checkpoint**, dan **Food station**. Lokasi waypoint dapat dipilih dan dipindahkan di peta.
-- Ekspor GPX dari rute tersimpan, termasuk track, elevasi yang tersedia, waypoint manual, dan checkpoint otomatis.
+- A home page and **My Routes** page for creating, opening, editing, and deleting routes.
+- Interactive maps powered by Leaflet and OpenStreetMap.
+- Place search suggestions and the browser's **My Location** feature.
+- Two route drawing modes:
+  - **Direct line** connects control points in order and has no 40-point limit.
+  - **Follow roads** requests a walking route from a public routing service, with a maximum of 40 control points per request.
+- Route distance, control point count, and automatically generated checkpoints every 5 km plus a finish point.
+- Estimated elevation and an elevation profile based on 30 m SRTM terrain data via OpenTopoData.
+- Manual waypoints on saved routes: **Water station**, **Checkpoint**, and **Food station**. Waypoint locations can be selected or moved on the map.
+- GPX export for saved routes, including the track, available elevation data, manual waypoints, and automatic checkpoints.
 
-## ⚙️ Teknologi
+## ⚙️ Technology
 
-- PHP 8.3 atau lebih baru
-- Laravel 13
-- MySQL
-- Node.js dan npm
-- Vite
-- Leaflet
-- Layanan publik OpenStreetMap/Nominatim, routing, dan OpenTopoData
+| Area | Technology |
+| --- | --- |
+| Backend | PHP 8.3+, Laravel 13 |
+| Database | MySQL |
+| Frontend | Node.js, npm, Vite |
+| Mapping | Leaflet, OpenStreetMap, Nominatim |
+| Routing and elevation | Public routing service, OpenTopoData (SRTM 30 m) |
 
-## 🚀 Menjalankan secara lokal
+## 🚀 Run locally
 
-Pastikan PHP 8.3+, Composer, MySQL, Node.js, dan npm tersedia. Laragon bisa digunakan untuk menyiapkan PHP dan MySQL di Windows.
+Make sure PHP 8.3+, Composer, MySQL, Node.js, and npm are installed. On Windows, Laragon can provide PHP and MySQL.
 
-- Pasang dependensi PHP dengan `composer install`.
-- Pastikan `.env` sudah dikonfigurasi sesuai MySQL lokal dan databasenya sudah dibuat. Jika `.env` belum ada, salin dari `.env.example`.
-- Buat application key dengan `php artisan key:generate`.
-- Jalankan migrasi database dengan `php artisan migrate`.
-- Pasang dependensi frontend dengan `npm install`.
-- Jalankan `php artisan serve` dan `npm run dev` di dua terminal terpisah.
-- Buka alamat yang ditampilkan Artisan, biasanya `http://127.0.0.1:8000`.
-- Untuk membuat aset frontend production, jalankan `npm run build`.
+- Install PHP dependencies with `composer install`.
+- Make sure `.env` is configured for your local MySQL database and that the database has been created. If `.env` does not exist, copy `.env.example` first.
+- Generate the application key with `php artisan key:generate`.
+- Run database migrations with `php artisan migrate`.
+- Install frontend dependencies with `npm install`.
+- Run `php artisan serve` and `npm run dev` in separate terminals.
+- Open the URL shown by Artisan, usually `http://127.0.0.1:8000`.
+- Build production frontend assets with `npm run build`.
 
-## 🌐 Peta dan data medan
+## 🌐 Maps and terrain data
 
-Aplikasi memakai layanan publik berikut. Endpoint dapat diubah melalui file `.env`; nilai bawaan tersedia di `config/services.php`.
+The app uses the following public services. Endpoints can be changed in `.env`; defaults are defined in `config/services.php`.
 
-| Pengaturan | Nilai bawaan | Kegunaan |
+| Setting | Default | Purpose |
 | --- | --- | --- |
-| `NOMINATIM_ENDPOINT` | `https://nominatim.openstreetmap.org/search` | Saran dan pencarian tempat |
-| `ROUTING_ENDPOINT` | `https://routing.openstreetmap.de/routed-foot/route/v1/driving` | Menghitung jalur saat **Ikuti jalan** aktif |
-| `ELEVATION_ENDPOINT` | `https://api.opentopodata.org/v1/srtm30m` | Mengambil estimasi elevasi medan |
+| `NOMINATIM_ENDPOINT` | `https://nominatim.openstreetmap.org/search` | Place search and suggestions |
+| `ROUTING_ENDPOINT` | `https://routing.openstreetmap.de/routed-foot/route/v1/driving` | Route calculation when **Follow roads** is enabled |
+| `ELEVATION_ENDPOINT` | `https://api.opentopodata.org/v1/srtm30m` | Terrain elevation estimates |
 
-Pencarian lokasi menggunakan cache dan jeda permintaan. Layanan routing dan elevasi juga memiliki batas serta dapat lambat atau tidak tersedia. Jika routing gagal, pengguna masih dapat menyusun rute dengan garis langsung. Atribusi peta OpenStreetMap ditampilkan pada halaman peta.
+Place search uses caching and request delays. Routing and elevation services also have usage limits and may be slow or temporarily unavailable. If routing fails, users can still draw a route using direct lines. OpenStreetMap attribution is shown on map pages.
 
-## 🥾 Alur merancang rute
+## 🥾 Route planning flow
 
-1. Buat rute baru, beri nama, lalu cari lokasi atau arahkan peta.
-2. Klik peta untuk menambahkan titik kontrol. Geser titik pada peta untuk mengubahnya; gunakan **Undo** untuk membatalkan titik terakhir.
-3. Secara bawaan, titik disambungkan dengan garis langsung. Aktifkan **Ikuti jalan** untuk meminta jalur pejalan kaki dari layanan routing.
-4. Periksa jarak, checkpoint, dan estimasi profil elevasi. Elevasi berasal dari model medan SRTM, bukan pengukuran GPS atau altimeter.
-5. Simpan rute. Setelah tersimpan, rute dapat dibuka kembali dari **Rute Saya** untuk diedit atau ditambahkan waypoint.
-6. Unduh GPX dari editor atau halaman detail rute.
+1. Create a route, give it a name, then search for a place or pan the map.
+2. Click the map to add control points. Drag points to move them, or use **Undo** to remove the last point.
+3. Points are connected by direct lines by default. Enable **Follow roads** to request a walking route from the routing service.
+4. Review the distance, checkpoints, and estimated elevation profile. Elevation comes from terrain data, not GPS or a barometric altimeter.
+5. Save the route. Reopen it from **My Routes** to edit it or add waypoints.
+6. Download the GPX file from the editor or route details page.
 
-Checkpoint otomatis dihitung dari geometri lintasan dan tidak disimpan sebagai tabel tersendiri. Waypoint manual disimpan pada tabel `waypoints` dan jaraknya dihitung terhadap track.
+Automatic checkpoints are calculated from the route geometry and are not stored in a separate table. Manual waypoints are stored in the `waypoints` table, and their distance is calculated against the route track.
 
-## 📦 Catatan GPX
+## 📦 GPX notes
 
-- File GPX berisi nama rute, geometri track, dan elevasi hanya jika tersedia.
-- Waypoint manual dan checkpoint otomatis ikut diekspor sebagai waypoint GPX. Aplikasi atau smartwatch tujuan dapat menampilkan waypoint dengan cara yang berbeda.
-- Pace, waktu aktivitas, dan timestamp per titik tidak dibuat karena aplikasi ini merancang rute, bukan merekam aktivitas GPS.
-- GPX ini tidak menjanjikan navigasi turn-by-turn. Kompatibilitas impor perlu diperiksa pada aplikasi tujuan; uji impor Strava belum dicatat dalam proyek.
-- Ultra Planner saat ini berfokus pada pembuatan dan ekspor rute; impor GPX belum tersedia.
+- GPX files include the route name, track geometry, and elevation only when available.
+- Manual waypoints and automatic checkpoints are exported as GPX waypoints. Apps and watches may display waypoints differently.
+- Pace, activity time, and per-point timestamps are not generated because Ultra Planner designs routes rather than recording GPS activities.
+- Turn-by-turn navigation is not guaranteed. GPX compatibility should be checked with the target app; Strava import has not yet been tested for this project.
+- GPX import is not currently available; the MVP focuses on route planning and export.
 
-## 🧱 Struktur penting
+## 🧱 Key structure
 
 ```text
-app/Http/Controllers/   Endpoint halaman, pencarian, routing, waypoint, checkpoint, dan ekspor
-app/Models/             Route, RouteControlPoint, RoutePoint, dan Waypoint
-app/Services/           Perhitungan geometri, checkpoint, dan profil elevasi
-database/migrations/    Skema routes, route_points, route_control_points, dan waypoints
-resources/views/        Beranda, daftar/detail rute, dan editor
-resources/js/           Interaksi peta dan editor rute
-routes/web.php          Definisi endpoint aplikasi
+app/Http/Controllers/   Page, search, routing, waypoint, checkpoint, and export endpoints
+app/Models/             Route, RouteControlPoint, RoutePoint, and Waypoint
+app/Services/           Geometry, checkpoint, and elevation profile calculations
+database/migrations/    routes, route_points, route_control_points, and waypoints schemas
+resources/views/        Home, route list/details, and route editor
+resources/js/           Map interactions and route editor
+routes/web.php          Application routes
 ```
 
-## 🔭 Status MVP
+## 🔭 MVP status
 
-Autentikasi pengguna, impor GPX, rencana pace/ETA, fueling dan hidrasi, serta ekspor FIT/TCX belum termasuk fitur yang tersedia saat ini. Aplikasi ini masih dikembangkan bertahap.
+User authentication, GPX import, pace/ETA planning, fueling and hydration plans, and FIT/TCX export are not available yet. The app is being developed incrementally.
