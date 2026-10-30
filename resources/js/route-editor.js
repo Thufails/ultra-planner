@@ -257,6 +257,8 @@ function initializeRouteEditor() {
     let routeCandidates = [];
     let routeDebounceTimer = null;
     let routeRequestGeneration = 0;
+    let roadRequestInFlight = false;
+    let roadRequestPending = false;
     let path = null;
     let userLocationMarker = null;
     let userAccuracyCircle = null;
@@ -401,7 +403,7 @@ function initializeRouteEditor() {
         renderElevationChart(elevationChart, elevationProfile);
         elevationDebounceTimer = window.setTimeout(
             () => loadElevationPreview(routePoints, requestGeneration),
-            1400,
+            1200,
         );
     }
 
@@ -429,6 +431,10 @@ function initializeRouteEditor() {
 
             if (requestGeneration !== elevationRequestGeneration) return;
             if (!response.ok) {
+                if (response.status === 429) {
+                    throw new Error('Permintaan estimasi elevasi terlalu sering. Tunggu sebentar, lalu coba lagi. Rute tetap bisa disimpan.');
+                }
+
                 const validationMessage = Object.values(payload.errors ?? {}).flat()[0];
                 throw new Error(validationMessage ?? payload.message ?? 'Profil elevasi gagal dihitung.');
             }
@@ -491,9 +497,13 @@ function initializeRouteEditor() {
         render();
         scheduleElevationPreview(trackPoints);
         const maxSnapDistance = Math.max(0, ...lastSnapDistances);
-        setRoutingStatus(maxSnapDistance > 50
+        const snapNotice = maxSnapDistance > 50
             ? `Jalur siap. Titik terjauh tersambung ke jalan sekitar ${Math.round(maxSnapDistance)} m dari lokasi klik.`
-            : `Jalur pejalan kaki siap (${(routedDistanceMeters / 1000).toFixed(1)} km).`);
+            : `Jalur pejalan kaki siap (${(routedDistanceMeters / 1000).toFixed(1)} km).`;
+        const routeGuidance = routeCandidates.length === 1
+            ? ' Layanan hanya memberi satu pilihan; tambahkan titik kontrol di jalan yang diinginkan untuk mengarahkan jalur.'
+            : '';
+        setRoutingStatus(`${snapNotice}${routeGuidance}`);
     }
 
     let selectedRouteCandidate = 0;
@@ -501,6 +511,12 @@ function initializeRouteEditor() {
 
     async function calculateRoadRoute(requestGeneration) {
         if (requestGeneration !== routeRequestGeneration || routingMode !== 'foot') return;
+        if (roadRequestInFlight) {
+            roadRequestPending = true;
+            return;
+        }
+
+        roadRequestInFlight = true;
 
         try {
             const response = await fetch(config.previewUrl, {
@@ -519,6 +535,10 @@ function initializeRouteEditor() {
 
             if (requestGeneration !== routeRequestGeneration) return;
             if (!response.ok) {
+                if (response.status === 429) {
+                    throw new Error('Permintaan jalur terlalu sering. Tunggu sebentar, lalu coba lagi.');
+                }
+
                 const validationMessage = Object.values(payload.errors ?? {}).flat()[0];
                 throw new Error(validationMessage ?? payload.message ?? 'Jalur pejalan kaki gagal dihitung.');
             }
@@ -547,6 +567,20 @@ function initializeRouteEditor() {
             routeCandidates = [];
             render();
             setRoutingStatus(`${error.message} Garis putus-putus hanya pratinjau langsung; rute belum siap disimpan.`, true);
+        } finally {
+            roadRequestInFlight = false;
+
+            if (roadRequestPending) {
+                roadRequestPending = false;
+
+                if (routingMode === 'foot' && controlPoints.length >= 2) {
+                    const latestRequestGeneration = routeRequestGeneration;
+                    routeDebounceTimer = window.setTimeout(
+                        () => calculateRoadRoute(latestRequestGeneration),
+                        600,
+                    );
+                }
+            }
         }
     }
 
@@ -562,12 +596,13 @@ function initializeRouteEditor() {
         render();
 
         if (controlPoints.length < 2) {
+            roadRequestPending = false;
             setRoutingStatus('Tambahkan minimal dua titik kontrol untuk mengikuti jalan.');
             return;
         }
 
         setRoutingStatus('Menghitung jalur pejalan kaki…');
-        routeDebounceTimer = window.setTimeout(() => calculateRoadRoute(requestGeneration), 1100);
+        routeDebounceTimer = window.setTimeout(() => calculateRoadRoute(requestGeneration), 600);
     }
 
     followRoadsToggle.addEventListener('change', () => {
@@ -581,6 +616,7 @@ function initializeRouteEditor() {
         if (routingMode === 'foot') {
             scheduleRoadRoute();
         } else {
+            roadRequestPending = false;
             routeIsCurrent = true;
             trackPoints = controlPoints.map((point) => ({ ...point }));
             routedDistanceMeters = null;

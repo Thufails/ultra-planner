@@ -15,7 +15,7 @@ Route::get('routes/location-search', LocationSearchController::class)
     ->middleware('throttle:30,1')
     ->name('routes.location-search');
 Route::post('routes/elevation-preview', ElevationPreviewController::class)
-    ->middleware('throttle:12,1')
+    ->middleware('throttle:30,1')
     ->name('routes.elevation-preview');
 Route::post('routes/preview', RoutePreviewController::class)
     ->middleware('throttle:30,1')

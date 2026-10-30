@@ -57,7 +57,7 @@ class RoutePreviewController extends Controller
                     ->connectTimeout(4)
                     ->timeout(12)
                     ->get(rtrim(config('services.routing.endpoint'), '/').'/'.$coordinates, [
-                        'alternatives' => 2,
+                        'alternatives' => 3,
                         'overview' => 'full',
                         'geometries' => 'geojson',
                         'steps' => 'false',

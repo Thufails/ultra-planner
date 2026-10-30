@@ -131,7 +131,7 @@
                     <p data-elevation-status role="status" aria-live="polite">
                         {{ $route?->elevation_source ? 'Estimasi dari ' . $route->elevation_source . ' · Data terrain 30 m' : 'Gambar rute untuk melihat perkiraan tanjakan dan turunan.' }}
                     </p>
-                    <p class="elevation-gain-summary">Total tanjakan <strong data-elevation-total-gain>—</strong></p>
+                    <p class="elevation-gain-summary">Kenaikan elevasi <strong data-elevation-total-gain>—</strong></p>
                 </div>
             </div>
             <div class="elevation-chart" data-elevation-chart role="img" aria-label="Grafik profil elevasi rute">

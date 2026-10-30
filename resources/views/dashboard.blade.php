@@ -42,19 +42,16 @@
 
             <div class="home-step-grid">
                 <article class="home-step-card">
-                    <span class="home-step-number">01</span>
                     <span class="home-step-icon home-step-icon-blue" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></span>
                     <h3>Temukan area</h3>
                     <p>Cari lokasi atau gunakan peta untuk menentukan tempat mulai dan tujuan.</p>
                 </article>
                 <article class="home-step-card">
-                    <span class="home-step-number">02</span>
                     <span class="home-step-icon home-step-icon-cyan" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 19V5m14 14V5M5 12h14"/><circle cx="5" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="19" r="2"/></svg></span>
                     <h3>Bentuk jalurmu</h3>
                     <p>Tambah dan geser titik kontrol. Aktifkan Ikuti jalan untuk mencoba jalur pejalan kaki.</p>
                 </article>
                 <article class="home-step-card">
-                    <span class="home-step-number">03</span>
                     <span class="home-step-icon home-step-icon-violet" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M6 3.5h8l4 4V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"/><path d="M14 3.5V8h4M8 13h8M8 17h5"/></svg></span>
                     <h3>Simpan rencana</h3>
                     <p>Simpan rute agar bisa dibuka lagi dan disempurnakan kapan pun.</p>
