@@ -1,8 +1,8 @@
-# Ultra Planner
+# 🏔️ Ultra Planner
 
-Ultra Planner adalah aplikasi web MVP untuk merancang jalur lari trail dan ultra di peta, melihat ringkasan medan, menyimpan rute, serta mengunduhnya sebagai file GPX.
+Web planner untuk merancang jalur lari trail dan ultra di peta, melihat ringkasan medan, menyimpan rute, lalu mengunduhnya sebagai file GPX.
 
-## Fitur
+## 🗺️ Fitur
 
 - Beranda dan halaman **Rute Saya** untuk membuka, membuat, mengedit, dan menghapus rute.
 - Peta interaktif berbasis Leaflet dengan peta OpenStreetMap.
@@ -15,7 +15,7 @@ Ultra Planner adalah aplikasi web MVP untuk merancang jalur lari trail dan ultra
 - Waypoint manual pada rute tersimpan dengan jenis **Water station**, **Checkpoint**, dan **Food station**. Lokasi waypoint dapat dipilih dan dipindahkan di peta.
 - Ekspor GPX dari rute tersimpan, termasuk track, elevasi yang tersedia, waypoint manual, dan checkpoint otomatis.
 
-## Teknologi
+## ⚙️ Teknologi
 
 - PHP 8.3 atau lebih baru
 - Laravel 13
@@ -25,76 +25,20 @@ Ultra Planner adalah aplikasi web MVP untuk merancang jalur lari trail dan ultra
 - Leaflet
 - Layanan publik OpenStreetMap/Nominatim, routing, dan OpenTopoData
 
-## Menjalankan di lokal
+## 🚀 Menjalankan secara lokal
 
-Pastikan PHP, Composer, MySQL, Node.js, dan npm sudah tersedia. Di Windows, Laragon dapat digunakan untuk PHP dan MySQL.
+Pastikan PHP 8.3+, Composer, MySQL, Node.js, dan npm tersedia. Laragon bisa digunakan untuk menyiapkan PHP dan MySQL di Windows.
 
-1. Pasang dependensi PHP:
+- Pasang dependensi PHP dengan `composer install`.
+- Pastikan `.env` sudah dikonfigurasi sesuai MySQL lokal dan databasenya sudah dibuat. Jika `.env` belum ada, salin dari `.env.example`.
+- Buat application key dengan `php artisan key:generate`.
+- Jalankan migrasi database dengan `php artisan migrate`.
+- Pasang dependensi frontend dengan `npm install`.
+- Jalankan `php artisan serve` dan `npm run dev` di dua terminal terpisah.
+- Buka alamat yang ditampilkan Artisan, biasanya `http://127.0.0.1:8000`.
+- Untuk membuat aset frontend production, jalankan `npm run build`.
 
-   ```bash
-   composer install
-   ```
-
-2. Buat file environment lokal. Di PowerShell:
-
-   ```powershell
-   Copy-Item .env.example .env
-   ```
-
-   Jika `.env` sudah ada, jangan menimpanya; cukup perbarui nilai konfigurasi yang diperlukan.
-
-3. Buat application key:
-
-   ```bash
-   php artisan key:generate
-   ```
-
-4. Buat database MySQL, lalu atur `.env` sesuai konfigurasi lokal. Contoh:
-
-   ```dotenv
-   APP_NAME="Ultra Planner"
-   APP_ENV=local
-   APP_DEBUG=true
-   APP_URL=http://127.0.0.1:8000
-
-   DB_CONNECTION=mysql
-   DB_HOST=127.0.0.1
-   DB_PORT=3306
-   DB_DATABASE=ultra_planner
-   DB_USERNAME=root
-   DB_PASSWORD=
-   ```
-
-   Sesuaikan nama database, username, dan password dengan MySQL milikmu.
-
-5. Jalankan migrasi:
-
-   ```bash
-   php artisan migrate
-   ```
-
-6. Pasang dependensi frontend dan jalankan Vite:
-
-   ```bash
-   npm install
-   npm run dev
-   ```
-
-7. Di terminal lain, jalankan Laravel:
-
-   ```bash
-   php artisan serve
-   ```
-
-   Buka alamat yang ditampilkan Artisan, biasanya `http://127.0.0.1:8000`.
-
-Untuk membuat aset frontend production:
-
-```bash
-npm run build
-```
-
-## Layanan peta dan data medan
+## 🌐 Peta dan data medan
 
 Aplikasi memakai layanan publik berikut. Endpoint dapat diubah melalui file `.env`; nilai bawaan tersedia di `config/services.php`.
 
@@ -106,7 +50,7 @@ Aplikasi memakai layanan publik berikut. Endpoint dapat diubah melalui file `.en
 
 Pencarian lokasi menggunakan cache dan jeda permintaan. Layanan routing dan elevasi juga memiliki batas serta dapat lambat atau tidak tersedia. Jika routing gagal, pengguna masih dapat menyusun rute dengan garis langsung. Atribusi peta OpenStreetMap ditampilkan pada halaman peta.
 
-## Cara kerja rute
+## 🥾 Alur merancang rute
 
 1. Buat rute baru, beri nama, lalu cari lokasi atau arahkan peta.
 2. Klik peta untuk menambahkan titik kontrol. Geser titik pada peta untuk mengubahnya; gunakan **Undo** untuk membatalkan titik terakhir.
@@ -117,7 +61,7 @@ Pencarian lokasi menggunakan cache dan jeda permintaan. Layanan routing dan elev
 
 Checkpoint otomatis dihitung dari geometri lintasan dan tidak disimpan sebagai tabel tersendiri. Waypoint manual disimpan pada tabel `waypoints` dan jaraknya dihitung terhadap track.
 
-## Catatan GPX
+## 📦 Catatan GPX
 
 - File GPX berisi nama rute, geometri track, dan elevasi hanya jika tersedia.
 - Waypoint manual dan checkpoint otomatis ikut diekspor sebagai waypoint GPX. Aplikasi atau smartwatch tujuan dapat menampilkan waypoint dengan cara yang berbeda.
@@ -125,7 +69,7 @@ Checkpoint otomatis dihitung dari geometri lintasan dan tidak disimpan sebagai t
 - GPX ini tidak menjanjikan navigasi turn-by-turn. Kompatibilitas impor perlu diperiksa pada aplikasi tujuan; uji impor Strava belum dicatat dalam proyek.
 - Ultra Planner saat ini berfokus pada pembuatan dan ekspor rute; impor GPX belum tersedia.
 
-## Struktur penting
+## 🧱 Struktur penting
 
 ```text
 app/Http/Controllers/   Endpoint halaman, pencarian, routing, waypoint, checkpoint, dan ekspor
@@ -137,6 +81,6 @@ resources/js/           Interaksi peta dan editor rute
 routes/web.php          Definisi endpoint aplikasi
 ```
 
-## Status MVP
+## 🔭 Status MVP
 
 Autentikasi pengguna, impor GPX, rencana pace/ETA, fueling dan hidrasi, serta ekspor FIT/TCX belum termasuk fitur yang tersedia saat ini. Aplikasi ini masih dikembangkan bertahap.
