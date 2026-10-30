@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Route;
 use App\Models\Waypoint;
+use App\Services\RouteGeometryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -21,9 +22,14 @@ class RouteWaypointController extends Controller
         return response()->json($route->waypoints);
     }
 
-    public function store(Request $request, Route $route): JsonResponse
+    public function store(Request $request, Route $route, RouteGeometryService $geometry): JsonResponse
     {
-        $validated = $request->validate($this->rules($route));
+        $validated = $request->validate($this->rules());
+        $validated['distance_meters'] = $geometry->distanceAlongTrackToCoordinate(
+            $this->trackPoints($route),
+            (float) $validated['latitude'],
+            (float) $validated['longitude'],
+        );
 
         $waypoint = $route->waypoints()->create([
             ...$validated,
@@ -33,11 +39,23 @@ class RouteWaypointController extends Controller
         return response()->json($waypoint, 201);
     }
 
-    public function update(Request $request, Route $route, Waypoint $waypoint): JsonResponse
+    public function update(Request $request, Route $route, Waypoint $waypoint, RouteGeometryService $geometry): JsonResponse
     {
         abort_unless($waypoint->route_id === $route->id, 404);
 
-        $waypoint->update($request->validate($this->rules($route, true, $waypoint->waypoint_type)));
+        $validated = $request->validate($this->rules(true, $waypoint->waypoint_type));
+        $coordinatesChanged = array_key_exists('latitude', $validated) || array_key_exists('longitude', $validated);
+        $waypoint->fill($validated);
+
+        if ($coordinatesChanged) {
+            $waypoint->distance_meters = $geometry->distanceAlongTrackToCoordinate(
+                $this->trackPoints($route),
+                (float) $waypoint->latitude,
+                (float) $waypoint->longitude,
+            );
+        }
+
+        $waypoint->save();
 
         return response()->json($waypoint->refresh());
     }
@@ -51,7 +69,7 @@ class RouteWaypointController extends Controller
         return response()->noContent();
     }
 
-    private function rules(Route $route, bool $partial = false, ?string $existingType = null): array
+    private function rules(bool $partial = false, ?string $existingType = null): array
     {
         $required = $partial ? 'sometimes|required' : 'required';
         $allowedTypes = self::TYPES;
@@ -65,14 +83,22 @@ class RouteWaypointController extends Controller
             'waypoint_type' => [$required, 'string', 'in:' . implode(',', $allowedTypes)],
             'latitude' => [$required, 'numeric', 'between:-90,90'],
             'longitude' => [$required, 'numeric', 'between:-180,180'],
-            'distance_meters' => [
-                'nullable',
-                'integer',
-                'min:0',
-                'max:' . max(0, (int) $route->distance_meters),
-            ],
             'elevation_meters' => ['nullable', 'numeric', 'between:-12000,10000'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ];
+    }
+
+    /**
+     * @return array<int, array{latitude: float, longitude: float, track_segment_index: int}>
+     */
+    private function trackPoints(Route $route): array
+    {
+        return $route->routePoints
+            ->map(fn ($point): array => [
+                'latitude' => (float) $point->latitude,
+                'longitude' => (float) $point->longitude,
+                'track_segment_index' => (int) $point->track_segment_index,
+            ])
+            ->all();
     }
 }

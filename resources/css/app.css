@@ -320,6 +320,8 @@ h1 { margin: 0; color: var(--ink); font-family: var(--font-display); font-size: 
 .waypoint-card-actions { display: flex; flex: 0 0 auto; gap: 6px; }
 .button-small { min-height: 34px; padding: 0 10px; font-size: 13px; }
 .waypoint-inline-form { width: 100%; display: grid; grid-template-columns: 1fr 160px 1fr auto auto; gap: 8px; }
+.waypoint-location-editor { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.waypoint-location-editor span { color: #71809a; font-size: 13px; }
 .waypoint-inline-form[hidden] { display: none; }
 .waypoint-card-details[hidden], .waypoint-card-actions[hidden] { display: none; }
 .waypoint-panel .button.is-active { border-color: #3155e5; background: #eff3ff; color: #3155e5; }

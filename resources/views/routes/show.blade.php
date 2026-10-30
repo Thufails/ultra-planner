@@ -38,7 +38,7 @@
     </section>
 
     <section class="detail-stats">
-        <article><span>Jarak</span><strong>{{ $route->distance_meters ? number_format($route->distance_meters / 1000, 1) . ' km' : 'Belum dihitung' }}</strong></article>
+        <article><span>Jarak lintasan</span><strong>{{ $route->distance_meters ? number_format($route->distance_meters / 1000, 1) . ' km' : 'Belum dihitung' }}</strong></article>
         <article><span>Perkiraan tanjakan</span><strong>{{ $route->elevation_gain_meters !== null ? '+' . number_format($route->elevation_gain_meters) . ' m' : '—' }}</strong></article>
         <article><span>Perkiraan turunan</span><strong>{{ $route->elevation_loss_meters !== null ? '−' . number_format($route->elevation_loss_meters) . ' m' : '—' }}</strong></article>
         <article><span>Titik kontrol</span><strong>{{ number_format($route->routeControlPoints->count()) }}</strong></article>

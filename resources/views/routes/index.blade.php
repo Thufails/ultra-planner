@@ -36,7 +36,7 @@
                         <span class="stat-value">
                             {{ $route->distance_meters ? number_format($route->distance_meters / 1000, 1) . ' km' : '—' }}
                         </span>
-                        <span class="stat-label">jarak</span>
+                        <span class="stat-label">jarak lintasan</span>
                     </div>
                     <div class="route-card-stats route-points-stat">
                         <span class="stat-value">{{ number_format($route->track_points_count) }}</span>

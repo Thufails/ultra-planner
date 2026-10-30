@@ -447,6 +447,7 @@ function initializeRouteEditor() {
     let selectingWaypoint = false;
     let selectedWaypointPosition = null;
     let waypointPreviewMarker = null;
+    let waypointLocationPicker = null;
     let waypointSaveInProgress = false;
     let userLocationMarker = null;
     let userAccuracyCircle = null;
@@ -653,6 +654,15 @@ function initializeRouteEditor() {
             notes.value = waypoint.notes ?? '';
             notes.placeholder = 'Catatan opsional';
             notes.setAttribute('aria-label', 'Catatan');
+            const locationControls = document.createElement('div');
+            locationControls.className = 'waypoint-location-editor';
+            const pickLocation = document.createElement('button');
+            pickLocation.type = 'button';
+            pickLocation.className = 'button button-secondary button-small';
+            pickLocation.textContent = 'Pilih lokasi baru di peta';
+            const locationStatus = document.createElement('span');
+            locationStatus.textContent = 'Lokasi tersimpan';
+            locationControls.append(pickLocation, locationStatus);
             const save = document.createElement('button');
             save.type = 'submit';
             save.className = 'button button-primary button-small';
@@ -661,8 +671,10 @@ function initializeRouteEditor() {
             cancel.type = 'button';
             cancel.className = 'button button-secondary button-small';
             cancel.textContent = 'Batal';
-            editForm.append(name, type, notes, save, cancel);
+            editForm.append(name, type, notes, locationControls, save, cancel);
             card.append(details, actions, editForm);
+            let editedLocation = null;
+            let locationPreviewMarker = null;
 
             edit.addEventListener('click', () => {
                 details.hidden = true;
@@ -670,20 +682,57 @@ function initializeRouteEditor() {
                 editForm.hidden = false;
                 name.focus();
             });
-            cancel.addEventListener('click', () => renderWaypoints());
+            pickLocation.addEventListener('click', () => {
+                waypointLocationPicker = (latlng) => {
+                    editedLocation = { latitude: latlng.lat, longitude: latlng.lng };
+                    locationStatus.textContent = `Lokasi baru dipilih · ${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
+                    locationPreviewMarker?.remove();
+                    const typeSequence = waypoints
+                        .slice(0, waypointIndex + 1)
+                        .filter((item) => item.waypoint_type === type.value)
+                        .length;
+                    locationPreviewMarker = L.marker([latlng.lat, latlng.lng], {
+                        icon: waypointIcon(type.value, typeSequence),
+                        title: `${name.value.trim() || waypoint.name} — lokasi baru`,
+                        zIndexOffset: 1200,
+                    }).addTo(waypointMarkers);
+                    pickLocation.classList.remove('is-active');
+                    map.getContainer().style.cursor = '';
+                };
+                pickLocation.classList.add('is-active');
+                locationStatus.textContent = 'Klik posisi baru pada peta; tekan Simpan untuk menerapkan.';
+                map.getContainer().style.cursor = 'crosshair';
+            });
+            cancel.addEventListener('click', () => {
+                waypointLocationPicker = null;
+                locationPreviewMarker?.remove();
+                map.getContainer().style.cursor = '';
+                renderWaypoints();
+            });
             editForm.addEventListener('submit', async (event) => {
                 event.preventDefault();
+                if (waypointLocationPicker) {
+                    showMessage('Pilih lokasi baru di peta atau batalkan pemilihan sebelum menyimpan.', true);
+                    return;
+                }
                 save.disabled = true;
                 try {
+                    const updates = { name: name.value.trim(), waypoint_type: type.value, notes: notes.value };
+                    if (editedLocation) Object.assign(updates, editedLocation);
                     const response = await fetch(`${config.waypointsUrlTemplate.replace('__ROUTE_ID__', routeId)}/${waypoint.id}`, {
                         method: 'PATCH',
                         credentials: 'same-origin',
                         headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
-                        body: JSON.stringify({ name: name.value.trim(), waypoint_type: type.value, notes: notes.value }),
+                        body: JSON.stringify(updates),
                     });
                     const result = await response.json().catch(() => ({}));
-                    if (!response.ok) throw new Error(result.message ?? 'Titik gagal diperbarui.');
+                    if (!response.ok) {
+                        const validationMessage = Object.values(result.errors ?? {}).flat()[0];
+                        throw new Error(validationMessage ?? result.message ?? 'Titik gagal diperbarui.');
+                    }
                     waypoints = waypoints.map((item) => item.id === waypoint.id ? result : item);
+                    locationPreviewMarker?.remove();
+                    map.getContainer().style.cursor = '';
                     render();
                     showMessage('Titik penting diperbarui.');
                 } catch (error) {
@@ -1134,6 +1183,13 @@ function initializeRouteEditor() {
     }
 
     map.on('click', (event) => {
+        if (waypointLocationPicker) {
+            const applyLocation = waypointLocationPicker;
+            waypointLocationPicker = null;
+            applyLocation(event.latlng);
+            return;
+        }
+
         if (selectingWaypoint) {
             selectedWaypointPosition = {
                 latitude: event.latlng.lat,

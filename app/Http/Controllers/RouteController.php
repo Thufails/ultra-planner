@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Route;
 use App\Services\ElevationProfileService;
+use App\Services\RouteGeometryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -38,11 +39,11 @@ class RouteController extends Controller
         return view('routes.editor', ['route' => null]);
     }
 
-    public function store(Request $request, ElevationProfileService $elevation): JsonResponse
+    public function store(Request $request, ElevationProfileService $elevation, RouteGeometryService $geometry): JsonResponse
     {
         $validated = $request->validate($this->storeRules());
 
-        $route = DB::transaction(function () use ($validated, $elevation): Route {
+        $route = DB::transaction(function () use ($validated, $elevation, $geometry): Route {
             $route = Route::create([
                 'name' => $validated['name'],
                 'routing_mode' => $validated['routing_mode'] ?? 'direct',
@@ -51,7 +52,7 @@ class RouteController extends Controller
             $this->replaceControlPoints($route, $validated['control_points']);
 
             if (array_key_exists('route_points', $validated)) {
-                $this->replaceTrackPoints($route, $validated['route_points'], $elevation);
+                $this->replaceTrackPoints($route, $validated['route_points'], $elevation, $geometry);
             }
 
             return $route;
@@ -81,11 +82,11 @@ class RouteController extends Controller
         return view('routes.editor', compact('route'));
     }
 
-    public function update(Request $request, Route $route, ElevationProfileService $elevation): JsonResponse
+    public function update(Request $request, Route $route, ElevationProfileService $elevation, RouteGeometryService $geometry): JsonResponse
     {
         $validated = $request->validate($this->updateRules());
 
-        DB::transaction(function () use ($validated, $route, $elevation): void {
+        DB::transaction(function () use ($validated, $route, $elevation, $geometry): void {
             if (array_key_exists('name', $validated)) {
                 $route->name = $validated['name'];
                 $route->save();
@@ -104,10 +105,10 @@ class RouteController extends Controller
             }
 
             if ($trackPointsProvided) {
-                $this->replaceTrackPoints($route, $validated['route_points'], $elevation);
+                $this->replaceTrackPoints($route, $validated['route_points'], $elevation, $geometry);
             } elseif ($controlPointsChanged) {
                 // The old generated track no longer matches the edited control points.
-                $this->replaceTrackPoints($route, [], $elevation);
+                $this->replaceTrackPoints($route, [], $elevation, $geometry);
             }
 
             $route->touch();
@@ -173,7 +174,7 @@ class RouteController extends Controller
         );
     }
 
-    private function replaceTrackPoints(Route $route, array $points, ElevationProfileService $elevation): void
+    private function replaceTrackPoints(Route $route, array $points, ElevationProfileService $elevation, RouteGeometryService $geometry): void
     {
         $route->routePoints()->delete();
 
@@ -236,8 +237,8 @@ class RouteController extends Controller
             'track_points_count' => count($normalizedPoints),
         ])->save();
 
-        $route->waypoints->each(function ($waypoint) use ($normalizedPoints): void {
-            $waypoint->distance_meters = $this->distanceAlongTrackToCoordinate(
+        $route->waypoints->each(function ($waypoint) use ($normalizedPoints, $geometry): void {
+            $waypoint->distance_meters = $geometry->distanceAlongTrackToCoordinate(
                 $normalizedPoints,
                 (float) $waypoint->latitude,
                 (float) $waypoint->longitude,
@@ -246,64 +247,4 @@ class RouteController extends Controller
         });
     }
 
-    private function distanceAlongTrackToCoordinate(array $points, float $latitude, float $longitude): ?int
-    {
-        $distanceBeforeSegment = 0.0;
-        $bestDistanceFromStart = null;
-        $bestOffset = INF;
-
-        for ($index = 1; $index < count($points); $index++) {
-            $start = $points[$index - 1];
-            $end = $points[$index];
-            if ($start['track_segment_index'] !== $end['track_segment_index']) {
-                continue;
-            }
-
-            $segmentLength = $this->distanceBetween(
-                (float) $start['latitude'],
-                (float) $start['longitude'],
-                (float) $end['latitude'],
-                (float) $end['longitude'],
-            );
-            $latitudeScale = cos(deg2rad(((float) $start['latitude'] + (float) $end['latitude'] + $latitude) / 3));
-            $startX = (float) $start['longitude'] * $latitudeScale;
-            $startY = (float) $start['latitude'];
-            $endX = (float) $end['longitude'] * $latitudeScale;
-            $endY = (float) $end['latitude'];
-            $targetX = $longitude * $latitudeScale;
-            $targetY = $latitude;
-            $deltaX = $endX - $startX;
-            $deltaY = $endY - $startY;
-            $lengthSquared = ($deltaX ** 2) + ($deltaY ** 2);
-            $fraction = $lengthSquared === 0.0
-                ? 0.0
-                : max(0.0, min(1.0, ((($targetX - $startX) * $deltaX) + (($targetY - $startY) * $deltaY)) / $lengthSquared));
-            $projectedLatitude = (float) $start['latitude'] + (((float) $end['latitude'] - (float) $start['latitude']) * $fraction);
-            $projectedLongitude = (float) $start['longitude'] + (((float) $end['longitude'] - (float) $start['longitude']) * $fraction);
-            $offset = $this->distanceBetween($latitude, $longitude, $projectedLatitude, $projectedLongitude);
-
-            if ($offset < $bestOffset) {
-                $bestOffset = $offset;
-                $bestDistanceFromStart = $distanceBeforeSegment + ($segmentLength * $fraction);
-            }
-
-            $distanceBeforeSegment += $segmentLength;
-        }
-
-        return $bestDistanceFromStart === null ? null : (int) round($bestDistanceFromStart);
-    }
-
-    private function distanceBetween(float $latitudeA, float $longitudeA, float $latitudeB, float $longitudeB): float
-    {
-        $earthRadiusMeters = 6_371_000;
-        $latitudeDelta = deg2rad($latitudeB - $latitudeA);
-        $longitudeDelta = deg2rad($longitudeB - $longitudeA);
-
-        $a = sin($latitudeDelta / 2) ** 2
-            + cos(deg2rad($latitudeA))
-            * cos(deg2rad($latitudeB))
-            * sin($longitudeDelta / 2) ** 2;
-
-        return 2 * $earthRadiusMeters * asin(sqrt(min(1, $a)));
-    }
 }
