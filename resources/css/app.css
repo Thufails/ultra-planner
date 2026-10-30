@@ -293,6 +293,35 @@ h1 { margin: 0; color: var(--ink); font-family: var(--font-display); font-size: 
 .routing-toggle-copy small { color: #71809a; font-size: 12px; }
 .routing-status { color: #66758e; font-size: 13px; line-height: 1.45; }
 .routing-status.is-error { color: #ad443b; }
+.route-planning-panel { margin: 0 22px 18px; padding: 18px 20px; border: 1px solid #e4eafa; border-radius: 14px; background: #fff; }
+.map-frame + .route-planning-panel { margin-top: 18px; }
+.route-planning-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+.route-planning-heading h2 { margin: 0; color: #263958; font-size: 17px; font-weight: 650; }
+.route-planning-heading p { margin: 5px 0 0; color: #74819a; font-size: 13px; line-height: 1.5; }
+.route-planning-heading > strong { color: #3155e5; font-size: 13px; white-space: nowrap; }
+.checkpoint-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.checkpoint-chip { padding: 7px 10px; border: 1px solid #e1e8fb; border-radius: 999px; background: #f6f8ff; color: #405271; font-size: 13px; font-weight: 600; }
+.planning-empty { margin: 0; color: #8491a8; font-size: 14px; }
+.waypoint-form { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(150px, .8fr) minmax(180px, 1.2fr) auto; align-items: end; gap: 10px; }
+.waypoint-form label { display: grid; gap: 6px; color: #465978; font-size: 13px; font-weight: 600; }
+.waypoint-form input, .waypoint-form select, .waypoint-inline-form input, .waypoint-inline-form select { min-width: 0; height: 42px; padding: 0 11px; border: 1px solid #dce4f4; border-radius: 9px; outline: none; background: #fff; color: var(--ink); font: inherit; font-size: 14px; }
+.waypoint-form input:focus, .waypoint-form select:focus, .waypoint-inline-form input:focus, .waypoint-inline-form select:focus { border-color: #849cff; box-shadow: 0 0 0 3px #496bf51b; }
+.waypoint-notes-field { grid-column: 1 / 3; }
+.waypoint-form .button { min-height: 42px; }
+.waypoint-selection { align-self: center; color: #71809a; font-size: 13px; }
+.waypoint-help { margin: 10px 0 0; color: #71809a; font-size: 13px; }
+.waypoint-help.is-error { color: #ad443b; }
+.waypoint-list { display: grid; gap: 8px; margin-top: 12px; }
+.waypoint-card { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 11px 13px; border: 1px solid #e6ebf4; border-radius: 10px; background: #fbfcff; }
+.waypoint-card-details { display: grid; gap: 4px; min-width: 0; }
+.waypoint-card-details strong { overflow-wrap: anywhere; color: #263958; font-size: 14px; }
+.waypoint-card-details span, .waypoint-card-details p { margin: 0; color: #74819a; font-size: 13px; line-height: 1.45; }
+.waypoint-card-actions { display: flex; flex: 0 0 auto; gap: 6px; }
+.button-small { min-height: 34px; padding: 0 10px; font-size: 13px; }
+.waypoint-inline-form { width: 100%; display: grid; grid-template-columns: 1fr 160px 1fr auto auto; gap: 8px; }
+.waypoint-inline-form[hidden] { display: none; }
+.waypoint-card-details[hidden], .waypoint-card-actions[hidden] { display: none; }
+.waypoint-panel .button.is-active { border-color: #3155e5; background: #eff3ff; color: #3155e5; }
 .route-alternatives { display: flex; flex-wrap: wrap; gap: 6px; }
 .route-alternatives[hidden] { display: none; }
 .route-alternative { min-height: 36px; padding: 0 12px; border: 1px solid #dce4f4; border-radius: 8px; background: #fff; color: #51617d; cursor: pointer; font-size: 12px; font-weight: 600; }
@@ -332,6 +361,8 @@ h1 { margin: 0; color: var(--ink); font-family: var(--font-display); font-size: 
 .route-marker-start { background: #f05d70; }
 .route-marker-control { background: #3867ff; }
 .route-marker-finish { background: #14b8c4; }
+.route-marker-checkpoint { background: #f29a16; }
+.route-marker-waypoint { width: 36px; height: 28px; border-radius: 9px; background: #182f61; font-size: 10px; }
 .user-location-marker-shell { border: 0; background: transparent; }
 .user-location-marker { width: 18px; height: 18px; display: block; border: 3px solid #fff; border-radius: 50%; background: #3478d4; box-shadow: 0 1px 7px #17251d80; }
 .leaflet-container { color: #27372e; font-family: var(--font-sans); }
@@ -342,6 +373,7 @@ h1 { margin: 0; color: var(--ink); font-family: var(--font-display); font-size: 
 .detail-stats span { color: #74819a; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
 .detail-stats strong { color: #23385e; font-size: 20px; }
 .detail-elevation-panel { margin: 0 0 16px; }
+.detail-planning-panel { margin: 0 0 16px; }
 .detail-map { width: 100%; height: min(64vh, 660px); min-height: 420px; background: #e8ece5; }
 .detail-map-card .map-note { max-width: none; padding: 12px 16px; }
 
@@ -360,6 +392,10 @@ h1 { margin: 0; color: var(--ink); font-family: var(--font-display); font-size: 
     .route-card { grid-template-columns: minmax(220px, 1fr) 100px auto; }
     .route-points-stat { display: none; }
     .editor-footer { align-items: flex-start; flex-wrap: wrap; gap: 8px 20px; }
+    .waypoint-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .waypoint-notes-field { grid-column: 1 / -1; }
+    .waypoint-inline-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .waypoint-inline-form .button { justify-self: start; }
     .map-note { flex-basis: 100%; max-width: none; }
     .form-message { max-width: none; }
 }
@@ -417,6 +453,13 @@ h1 { margin: 0; color: var(--ink); font-family: var(--font-display); font-size: 
     .elevation-chart { min-height: 205px; }
     .elevation-svg { height: 235px; }
     .elevation-disclaimer { font-size: 11px; }
+    .route-planning-panel { margin: 0 16px 14px; padding: 15px 13px; }
+    .route-planning-heading { align-items: flex-start; flex-direction: column; gap: 7px; }
+    .route-planning-heading h2 { font-size: 16px; }
+    .waypoint-form { grid-template-columns: 1fr; }
+    .waypoint-notes-field { grid-column: auto; }
+    .waypoint-card { align-items: flex-start; flex-direction: column; }
+    .waypoint-inline-form { grid-template-columns: 1fr; }
     .routing-options { align-items: flex-start; flex-direction: column; padding: 0 16px 14px; }
     .metric-card { min-height: 66px; gap: 9px; padding: 10px; }
     .metric-icon { width: 32px; height: 32px; font-size: 17px; }

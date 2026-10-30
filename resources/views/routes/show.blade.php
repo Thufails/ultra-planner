@@ -13,6 +13,17 @@
             'longitude' => (float) $point->longitude,
             'elevation_meters' => $point->elevation_meters === null ? null : (float) $point->elevation_meters,
             'distance_from_start_meters' => $point->distance_from_start_meters === null ? null : (int) $point->distance_from_start_meters,
+            'track_segment_index' => (int) $point->track_segment_index,
+        ])->values();
+        $waypoints = $route->waypoints->map(fn ($waypoint) => [
+            'id' => $waypoint->id,
+            'sequence' => $waypoint->sequence,
+            'distance_meters' => $waypoint->distance_meters,
+            'latitude' => (float) $waypoint->latitude,
+            'longitude' => (float) $waypoint->longitude,
+            'name' => $waypoint->name,
+            'waypoint_type' => $waypoint->waypoint_type,
+            'notes' => $waypoint->notes,
         ])->values();
     @endphp
 
@@ -50,6 +61,32 @@
         <p class="elevation-disclaimer">Estimasi medan dari data terrain SRTM 30 m, bukan pengukuran GPS atau altimeter barometrik.</p>
     </section>
 
+    <section class="route-planning-panel detail-planning-panel" aria-labelledby="detail-checkpoint-heading">
+        <div class="route-planning-heading">
+            <div>
+                <h2 id="detail-checkpoint-heading">Checkpoint rute</h2>
+                <p>Titik otomatis setiap 5 km dan titik finis.</p>
+            </div>
+            <strong data-checkpoint-count>Memuat…</strong>
+        </div>
+        <div class="checkpoint-list" data-checkpoint-list aria-live="polite">
+            <p class="planning-empty">Checkpoint dihitung dari lintasan tersimpan.</p>
+        </div>
+    </section>
+
+    <section class="route-planning-panel detail-planning-panel" aria-labelledby="detail-waypoint-heading">
+        <div class="route-planning-heading">
+            <div>
+                <h2 id="detail-waypoint-heading">Titik penting</h2>
+                <p>Lokasi bantuan dan penanda lain pada rute.</p>
+            </div>
+            <a class="button button-secondary" href="{{ route('routes.edit', $route) }}">Tambah / kelola titik</a>
+        </div>
+        <div class="waypoint-list" data-waypoint-list aria-live="polite">
+            <p class="planning-empty">Belum ada titik penting pada rute ini.</p>
+        </div>
+    </section>
+
     <section class="detail-map-card">
         <div id="route-viewer-map" class="detail-map" aria-label="Peta rute"></div>
         <p class="map-note">
@@ -71,6 +108,8 @@
             'controlPoints' => $controlPoints,
             'routePoints' => $trackPoints,
             'elevationSource' => $route->elevation_source,
+            'waypoints' => $waypoints,
+            'checkpointsUrl' => route('routes.checkpoints.index', $route),
         ]);
     </script>
 @endpush

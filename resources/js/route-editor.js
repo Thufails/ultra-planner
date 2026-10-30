@@ -31,6 +31,7 @@ function renderElevationChart(container, profile) {
         .map((point) => ({
             distance: Number(point.distance_from_start_meters),
             elevation: Number(point.elevation_meters),
+            track_segment_index: Number(point.track_segment_index ?? 0),
         }));
 
     const totalGainElement = container.closest('.elevation-panel')?.querySelector('[data-elevation-total-gain]');
@@ -92,10 +93,19 @@ function renderElevationChart(container, profile) {
     const mappedPoints = points.map((point) => ({ ...point, x: x(point.distance), y: y(point.elevation) }));
     let pathData = `M ${mappedPoints[0].x.toFixed(2)} ${mappedPoints[0].y.toFixed(2)}`;
     for (let index = 0; index < mappedPoints.length - 1; index += 1) {
-        const previous = mappedPoints[Math.max(0, index - 1)];
         const current = mappedPoints[index];
         const next = mappedPoints[index + 1];
-        const following = mappedPoints[Math.min(mappedPoints.length - 1, index + 2)];
+        if (current.track_segment_index !== next.track_segment_index) {
+            pathData += ` M ${next.x.toFixed(2)} ${next.y.toFixed(2)}`;
+            continue;
+        }
+        const previous = index > 0 && mappedPoints[index - 1].track_segment_index === current.track_segment_index
+            ? mappedPoints[index - 1]
+            : current;
+        const following = index + 2 < mappedPoints.length
+            && mappedPoints[index + 2].track_segment_index === next.track_segment_index
+            ? mappedPoints[index + 2]
+            : next;
         pathData += ` C ${(current.x + (next.x - previous.x) / 6).toFixed(2)} ${(current.y + (next.y - previous.y) / 6).toFixed(2)}, ${(next.x - (following.x - current.x) / 6).toFixed(2)} ${(next.y - (following.y - current.y) / 6).toFixed(2)}, ${next.x.toFixed(2)} ${next.y.toFixed(2)}`;
     }
     svg.append(make('path', { d: pathData, class: 'elevation-line' }));
@@ -127,8 +137,14 @@ function renderElevationChart(container, profile) {
     container.replaceChildren(svg, tooltip);
 
     let gainAnchor = points[0].elevation;
+    let gainSegment = points[0].track_segment_index;
     let totalGain = 0;
     points.slice(1).forEach((point) => {
+        if (point.track_segment_index !== gainSegment) {
+            gainAnchor = point.elevation;
+            gainSegment = point.track_segment_index;
+            return;
+        }
         const change = point.elevation - gainAnchor;
         if (change >= 3) {
             totalGain += change;
@@ -221,6 +237,144 @@ function distanceOf(points) {
     return points.slice(1).reduce((total, point, index) => total + distanceBetween(points[index], point), 0);
 }
 
+const waypointTypeLabels = {
+    water_refill: 'Water refill',
+    food_stop: 'Food stop',
+    turnaround: 'Turnaround',
+    exit_point: 'Exit point',
+    pickup_point: 'Pickup point',
+    custom: 'Lainnya',
+};
+
+function splitTrackSegments(points) {
+    const segments = [];
+
+    points.forEach((point) => {
+        const current = segments.at(-1);
+        const previous = current?.at(-1);
+        if (!current || previous.track_segment_index !== point.track_segment_index) segments.push([point]);
+        else current.push(point);
+    });
+
+    return segments;
+}
+
+function deriveCheckpoints(points, intervalMeters = 5000) {
+    if (points.length < 2) return [];
+
+    let totalDistance = 0;
+    let previous = null;
+    const measured = points.map((point) => {
+        if (previous && previous.track_segment_index === point.track_segment_index) {
+            totalDistance += distanceBetween(previous, point);
+        }
+        const item = { ...point, measured_distance: totalDistance };
+        previous = point;
+        return item;
+    });
+
+    if (totalDistance <= 0) return [];
+
+    const results = [];
+    for (let distance = intervalMeters; distance < totalDistance; distance += intervalMeters) {
+        let prior = null;
+        let position = null;
+        for (const point of measured) {
+            if (prior
+                && prior.track_segment_index === point.track_segment_index
+                && distance >= prior.measured_distance
+                && distance <= point.measured_distance
+                && point.measured_distance > prior.measured_distance) {
+                const fraction = (distance - prior.measured_distance)
+                    / (point.measured_distance - prior.measured_distance);
+                position = {
+                    latitude: prior.latitude + (point.latitude - prior.latitude) * fraction,
+                    longitude: prior.longitude + (point.longitude - prior.longitude) * fraction,
+                };
+                break;
+            }
+            prior = point;
+        }
+        if (position) results.push({ kind: 'checkpoint', distance_meters: Math.round(distance), ...position });
+    }
+
+    const finish = measured.at(-1);
+    results.push({
+        kind: 'finish',
+        distance_meters: Math.round(totalDistance),
+        latitude: finish.latitude,
+        longitude: finish.longitude,
+    });
+
+    return results;
+}
+
+function checkpointIcon(checkpoint, index) {
+    const label = checkpoint.kind === 'finish' ? 'F' : String(index + 1);
+    const kind = checkpoint.kind === 'finish' ? 'finish' : 'checkpoint';
+
+    return L.divIcon({
+        className: 'route-marker-shell',
+        html: `<span class="route-marker route-marker-${kind}">${label}</span>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+    });
+}
+
+function waypointIcon(sequence) {
+    return L.divIcon({
+        className: 'route-marker-shell',
+        html: `<span class="route-marker route-marker-waypoint">W${sequence}</span>`,
+        iconSize: [34, 30],
+        iconAnchor: [17, 15],
+    });
+}
+
+function formatRouteDistance(meters) {
+    return `${(Number(meters || 0) / 1000).toFixed(1)} km`;
+}
+
+function distanceAlongTrackForPosition(points, position) {
+    let distanceBeforeSegment = 0;
+    let bestDistanceFromStart = null;
+    let bestOffset = Number.POSITIVE_INFINITY;
+    let previous = null;
+
+    points.forEach((point) => {
+        if (previous && previous.track_segment_index === point.track_segment_index) {
+            const segmentLength = distanceBetween(previous, point);
+            const latitudeScale = Math.cos(((previous.latitude + point.latitude + position.latitude) / 3) * Math.PI / 180);
+            const startX = previous.longitude * latitudeScale;
+            const startY = previous.latitude;
+            const endX = point.longitude * latitudeScale;
+            const endY = point.latitude;
+            const targetX = position.longitude * latitudeScale;
+            const targetY = position.latitude;
+            const dx = endX - startX;
+            const dy = endY - startY;
+            const segmentSquared = dx * dx + dy * dy;
+            const fraction = segmentSquared === 0
+                ? 0
+                : Math.max(0, Math.min(1, ((targetX - startX) * dx + (targetY - startY) * dy) / segmentSquared));
+            const projected = {
+                latitude: previous.latitude + (point.latitude - previous.latitude) * fraction,
+                longitude: previous.longitude + (point.longitude - previous.longitude) * fraction,
+            };
+            const offset = distanceBetween(position, projected);
+
+            if (offset < bestOffset) {
+                bestOffset = offset;
+                bestDistanceFromStart = distanceBeforeSegment + segmentLength * fraction;
+            }
+
+            distanceBeforeSegment += segmentLength;
+        }
+        previous = point;
+    });
+
+    return bestDistanceFromStart === null ? null : Math.round(bestDistanceFromStart);
+}
+
 function initializeRouteEditor() {
     const editor = document.querySelector('[data-route-editor]');
     const config = window.routeEditorConfig;
@@ -245,12 +399,24 @@ function initializeRouteEditor() {
     const elevationLossElement = editor.querySelector('[data-elevation-loss]');
     const elevationStatus = editor.querySelector('[data-elevation-status]');
     const elevationChart = editor.querySelector('[data-elevation-chart]');
+    const checkpointList = editor.querySelector('[data-checkpoint-list]');
+    const checkpointCount = editor.querySelector('[data-checkpoint-count]');
+    const waypointList = editor.querySelector('[data-waypoint-list]');
+    const waypointName = editor.querySelector('[data-waypoint-name]');
+    const waypointType = editor.querySelector('[data-waypoint-type]');
+    const waypointNotes = editor.querySelector('[data-waypoint-notes]');
+    const pickWaypointButton = editor.querySelector('[data-pick-waypoint]');
+    const saveWaypointButton = editor.querySelector('[data-save-waypoint]');
+    const waypointSelection = editor.querySelector('[data-waypoint-selection]');
+    const waypointHelp = editor.querySelector('[data-waypoint-help]');
 
     const map = createMap(mapElement, config);
     initializeLocationSearch(map, config);
     const markers = L.layerGroup().addTo(map);
+    const waypointMarkers = L.layerGroup().addTo(map);
     let controlPoints = normalizePoints(config.controlPoints);
     let trackPoints = normalizePoints(config.routePoints);
+    let waypoints = Array.isArray(config.waypoints) ? config.waypoints : [];
     let routingMode = config.routingMode === 'foot' ? 'foot' : 'direct';
     let routeIsCurrent = routingMode === 'direct' || trackPoints.length >= 2;
     let routedDistanceMeters = Number(config.distanceMeters) || null;
@@ -259,7 +425,9 @@ function initializeRouteEditor() {
     let routeRequestGeneration = 0;
     let roadRequestInFlight = false;
     let roadRequestPending = false;
-    let path = null;
+    let paths = [];
+    let selectingWaypoint = false;
+    let selectedWaypointPosition = null;
     let userLocationMarker = null;
     let userAccuracyCircle = null;
     let locationWatchActive = false;
@@ -272,6 +440,12 @@ function initializeRouteEditor() {
     let elevationCalculationPending = false;
 
     followRoadsToggle.checked = routingMode === 'foot';
+
+    let routeId = config.routeId ?? (config.updateUrl ? config.updateUrl.split('/').pop() : null);
+    if (!routeId && pickWaypointButton && saveWaypointButton) {
+        pickWaypointButton.disabled = true;
+        saveWaypointButton.disabled = true;
+    }
 
     function visibleTrack() {
         if (routingMode !== 'foot' || !routeIsCurrent || trackPoints.length === 0) return controlPoints;
@@ -312,17 +486,17 @@ function initializeRouteEditor() {
 
     function render() {
         markers.clearLayers();
+        waypointMarkers.clearLayers();
 
-        if (path) {
-            map.removeLayer(path);
-            path = null;
-        }
+        paths.forEach((path) => map.removeLayer(path));
+        paths = [];
 
         const previewPoints = visibleTrack();
 
-        if (previewPoints.length >= 2) {
-            path = L.polyline(
-                previewPoints.map((point) => [point.latitude, point.longitude]),
+        splitTrackSegments(previewPoints).forEach((segment) => {
+            if (segment.length < 2) return;
+            paths.push(L.polyline(
+                segment.map((point) => [point.latitude, point.longitude]),
                 {
                     color: routingMode === 'foot' && routeIsCurrent ? '#3155e5' : '#3867ff',
                     weight: 5,
@@ -331,8 +505,8 @@ function initializeRouteEditor() {
                     lineCap: 'round',
                     lineJoin: 'round',
                 },
-            ).addTo(map);
-        }
+            ).addTo(map));
+        });
 
         controlPoints.forEach((point, index) => {
             const marker = L.marker([point.latitude, point.longitude], {
@@ -356,8 +530,161 @@ function initializeRouteEditor() {
             });
         });
 
+        const checkpoints = deriveCheckpoints(previewPoints);
+        checkpointList.replaceChildren();
+        checkpointCount.textContent = checkpoints.length > 0
+            ? `${Math.max(0, checkpoints.length - 1)} checkpoint · finis`
+            : '0 checkpoint';
+        if (checkpoints.length === 0) {
+            const empty = document.createElement('p');
+            empty.className = 'planning-empty';
+            empty.textContent = 'Checkpoint akan muncul setelah rute memiliki jarak.';
+            checkpointList.append(empty);
+        } else {
+            checkpoints.forEach((checkpoint, index) => {
+                const item = document.createElement('span');
+                item.className = 'checkpoint-chip';
+                item.textContent = `${checkpoint.kind === 'finish' ? 'Finis' : `CP ${index + 1}`} · ${formatRouteDistance(checkpoint.distance_meters)}`;
+                checkpointList.append(item);
+                L.marker([checkpoint.latitude, checkpoint.longitude], {
+                    icon: checkpointIcon(checkpoint, index),
+                    interactive: false,
+                    keyboard: false,
+                }).addTo(markers);
+            });
+        }
+
+        renderWaypoints();
+
         updateSummary();
         renderAlternatives();
+    }
+
+    function renderWaypoints() {
+        if (!waypointList) return;
+        waypointList.replaceChildren();
+        if (waypoints.length === 0) {
+            const empty = document.createElement('p');
+            empty.className = 'planning-empty';
+            empty.textContent = 'Belum ada titik penting.';
+            waypointList.append(empty);
+            return;
+        }
+
+        waypoints.forEach((waypoint) => {
+            const card = document.createElement('article');
+            card.className = 'waypoint-card';
+            const details = document.createElement('div');
+            details.className = 'waypoint-card-details';
+            const title = document.createElement('strong');
+            title.textContent = waypoint.name;
+            const meta = document.createElement('span');
+            meta.textContent = `${waypointTypeLabels[waypoint.waypoint_type] ?? 'Lainnya'}${waypoint.distance_meters !== null && waypoint.distance_meters !== undefined ? ` · ${formatRouteDistance(waypoint.distance_meters)}` : ''}`;
+            details.append(title, meta);
+            if (waypoint.notes) {
+                const notes = document.createElement('p');
+                notes.textContent = waypoint.notes;
+                details.append(notes);
+            }
+
+            const actions = document.createElement('div');
+            actions.className = 'waypoint-card-actions';
+            const edit = document.createElement('button');
+            edit.type = 'button';
+            edit.className = 'button button-secondary button-small';
+            edit.textContent = 'Ubah';
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'button button-quiet button-small';
+            remove.textContent = 'Hapus';
+            actions.append(edit, remove);
+
+            const editForm = document.createElement('form');
+            editForm.className = 'waypoint-inline-form';
+            editForm.hidden = true;
+            const name = document.createElement('input');
+            name.type = 'text';
+            name.maxLength = 120;
+            name.required = true;
+            name.value = waypoint.name;
+            name.setAttribute('aria-label', 'Nama titik');
+            const type = document.createElement('select');
+            type.setAttribute('aria-label', 'Jenis titik');
+            Object.entries(waypointTypeLabels).forEach(([value, label]) => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = label;
+                option.selected = value === waypoint.waypoint_type;
+                type.append(option);
+            });
+            const notes = document.createElement('input');
+            notes.type = 'text';
+            notes.maxLength = 5000;
+            notes.value = waypoint.notes ?? '';
+            notes.placeholder = 'Catatan opsional';
+            notes.setAttribute('aria-label', 'Catatan');
+            const save = document.createElement('button');
+            save.type = 'submit';
+            save.className = 'button button-primary button-small';
+            save.textContent = 'Simpan';
+            const cancel = document.createElement('button');
+            cancel.type = 'button';
+            cancel.className = 'button button-secondary button-small';
+            cancel.textContent = 'Batal';
+            editForm.append(name, type, notes, save, cancel);
+            card.append(details, actions, editForm);
+
+            edit.addEventListener('click', () => {
+                details.hidden = true;
+                actions.hidden = true;
+                editForm.hidden = false;
+                name.focus();
+            });
+            cancel.addEventListener('click', () => renderWaypoints());
+            editForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                save.disabled = true;
+                try {
+                    const response = await fetch(`${config.waypointsUrlTemplate.replace('__ROUTE_ID__', routeId)}/${waypoint.id}`, {
+                        method: 'PATCH',
+                        credentials: 'same-origin',
+                        headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                        body: JSON.stringify({ name: name.value.trim(), waypoint_type: type.value, notes: notes.value }),
+                    });
+                    const result = await response.json().catch(() => ({}));
+                    if (!response.ok) throw new Error(result.message ?? 'Titik gagal diperbarui.');
+                    waypoints = waypoints.map((item) => item.id === waypoint.id ? result : item);
+                    render();
+                    showMessage('Titik penting diperbarui.');
+                } catch (error) {
+                    showMessage(error.message || 'Titik gagal diperbarui.', true);
+                    save.disabled = false;
+                }
+            });
+            remove.addEventListener('click', async () => {
+                if (!window.confirm(`Hapus titik “${waypoint.name}”?`)) return;
+                remove.disabled = true;
+                try {
+                    const response = await fetch(`${config.waypointsUrlTemplate.replace('__ROUTE_ID__', routeId)}/${waypoint.id}`, {
+                        method: 'DELETE', credentials: 'same-origin',
+                        headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                    });
+                    if (!response.ok) throw new Error('Titik gagal dihapus.');
+                    waypoints = waypoints.filter((item) => item.id !== waypoint.id);
+                    render();
+                    showMessage('Titik penting dihapus.');
+                } catch (error) {
+                    showMessage(error.message || 'Titik gagal dihapus.', true);
+                    remove.disabled = false;
+                }
+            });
+
+            waypointList.append(card);
+            L.marker([Number(waypoint.latitude), Number(waypoint.longitude)], {
+                icon: waypointIcon(waypoint.sequence),
+                title: waypoint.name,
+            }).addTo(waypointMarkers);
+        });
     }
 
     function setRoutingStatus(text, isError = false) {
@@ -467,6 +794,7 @@ function initializeRouteEditor() {
             .map((point) => ({
                 distance_from_start_meters: Number(point.distance_from_start_meters),
                 elevation_meters: Number(point.elevation_meters),
+                track_segment_index: Number(point.track_segment_index ?? 0),
             }));
 
         if (storedProfile.length < 2) return false;
@@ -721,6 +1049,19 @@ function initializeRouteEditor() {
     });
 
     map.on('click', (event) => {
+        if (selectingWaypoint) {
+            selectedWaypointPosition = {
+                latitude: event.latlng.lat,
+                longitude: event.latlng.lng,
+            };
+            selectingWaypoint = false;
+            pickWaypointButton.classList.remove('is-active');
+            waypointSelection.textContent = `Lokasi dipilih · ${event.latlng.lat.toFixed(5)}, ${event.latlng.lng.toFixed(5)}`;
+            saveWaypointButton.disabled = !waypointName.value.trim();
+            waypointHelp.textContent = 'Lokasi dipilih. Periksa nama dan jenisnya, lalu simpan titik.';
+            return;
+        }
+
         if (controlPoints.length >= 40) {
             setRoutingStatus('Maksimal 40 titik kontrol untuk satu rute.');
             return;
@@ -742,6 +1083,66 @@ function initializeRouteEditor() {
             scheduleElevationPreview(controlPoints);
         }
     });
+
+    if (pickWaypointButton && saveWaypointButton) {
+        pickWaypointButton.addEventListener('click', () => {
+            if (!routeId) return;
+            if (visibleTrack().length < 2) {
+                showMessage('Buat dan simpan lintasan terlebih dahulu sebelum menambahkan titik penting.', true);
+                return;
+            }
+            selectingWaypoint = true;
+            selectedWaypointPosition = null;
+            saveWaypointButton.disabled = true;
+            pickWaypointButton.classList.add('is-active');
+            waypointSelection.textContent = 'Klik lokasi titik penting pada peta.';
+            waypointHelp.textContent = 'Mode pemilihan aktif. Klik satu lokasi pada lintasan atau peta.';
+        });
+
+        waypointName.addEventListener('input', () => {
+            saveWaypointButton.disabled = !routeId || !selectedWaypointPosition || !waypointName.value.trim();
+        });
+
+        saveWaypointButton.addEventListener('click', async () => {
+            if (!routeId || !selectedWaypointPosition || !waypointName.value.trim()) return;
+            saveWaypointButton.disabled = true;
+
+            const points = visibleTrack();
+            const distanceFromStart = distanceAlongTrackForPosition(points, selectedWaypointPosition);
+
+            try {
+                const response = await fetch(config.waypointsUrlTemplate.replace('__ROUTE_ID__', routeId), {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                    body: JSON.stringify({
+                        name: waypointName.value.trim(),
+                        waypoint_type: waypointType.value,
+                        notes: waypointNotes.value.trim() || null,
+                        latitude: selectedWaypointPosition.latitude,
+                        longitude: selectedWaypointPosition.longitude,
+                        distance_meters: distanceFromStart,
+                    }),
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    const validationMessage = Object.values(result.errors ?? {}).flat()[0];
+                    throw new Error(validationMessage ?? result.message ?? 'Titik gagal disimpan.');
+                }
+                waypoints.push(result);
+                waypointName.value = '';
+                waypointNotes.value = '';
+                waypointSelection.textContent = 'Lokasi belum dipilih';
+                waypointHelp.textContent = 'Titik penting tersimpan bersama rute.';
+                selectedWaypointPosition = null;
+                render();
+                showMessage('Titik penting tersimpan.');
+            } catch (error) {
+                showMessage(error.message || 'Titik gagal disimpan.', true);
+                saveWaypointButton.disabled = false;
+            }
+        });
+    }
 
     undoButton.addEventListener('click', () => {
         controlPoints.pop();
@@ -828,16 +1229,21 @@ function initializeRouteEditor() {
                 throw new Error(validationMessage ?? result.message ?? 'Rute gagal disimpan. Coba lagi.');
             }
 
-            const routeId = result.id ?? (config.updateUrl ? config.updateUrl.split('/').pop() : null);
-            if (!routeId) throw new Error('Rute tersimpan, tetapi ID rute tidak ditemukan.');
+            const savedRouteId = result.id ?? (config.updateUrl ? config.updateUrl.split('/').pop() : null);
+            if (!savedRouteId) throw new Error('Rute tersimpan, tetapi ID rute tidak ditemukan.');
 
             if (!exportAfterSave) {
-                window.location.assign(config.showUrlTemplate.replace('__ROUTE_ID__', routeId));
+                window.location.assign(config.showUrlTemplate.replace('__ROUTE_ID__', savedRouteId));
                 return;
             }
 
             config.mode = 'edit';
+            routeId = String(savedRouteId);
             config.updateUrl = config.updateUrlTemplate.replace('__ROUTE_ID__', routeId);
+            if (pickWaypointButton && saveWaypointButton) {
+                pickWaypointButton.disabled = false;
+                saveWaypointButton.disabled = true;
+            }
 
             const exportUrl = config.gpxUrlTemplate.replace('__ROUTE_ID__', routeId);
             const exportResponse = await fetch(exportUrl, {
@@ -881,7 +1287,7 @@ function initializeRouteEditor() {
     }
 
     const bounds = L.latLngBounds(
-        [...trackPoints, ...controlPoints].map((point) => [point.latitude, point.longitude]),
+        [...trackPoints, ...controlPoints, ...waypoints].map((point) => [Number(point.latitude), Number(point.longitude)]),
     );
     if (bounds.isValid()) map.fitBounds(bounds.pad(0.18), { maxZoom: 15 });
 
@@ -1011,6 +1417,7 @@ function initializeRouteViewer() {
     if (!mapElement || !config) return;
 
     const map = createMap(mapElement, config);
+    const checkpointMarkers = L.layerGroup().addTo(map);
     const controlPoints = normalizePoints(config.controlPoints);
     const trackPoints = normalizePoints(config.routePoints);
     const visiblePoints = trackPoints.length > 0 ? trackPoints : controlPoints;
@@ -1023,6 +1430,7 @@ function initializeRouteViewer() {
         .map((point) => ({
             distance_from_start_meters: Number(point.distance_from_start_meters),
             elevation_meters: Number(point.elevation_meters),
+            track_segment_index: Number(point.track_segment_index ?? 0),
         }));
 
     if (elevationChart) renderElevationChart(elevationChart, profile);
@@ -1030,12 +1438,13 @@ function initializeRouteViewer() {
         elevationStatus.textContent = `Estimasi ${config.elevationSource ?? 'SRTM 30 m'} · tersimpan bersama rute`;
     }
 
-    if (visiblePoints.length >= 2) {
+    splitTrackSegments(visiblePoints).forEach((segment) => {
+        if (segment.length < 2) return;
         L.polyline(
-            visiblePoints.map((point) => [point.latitude, point.longitude]),
+            segment.map((point) => [point.latitude, point.longitude]),
             { color: '#3867ff', weight: 5, opacity: 0.95, lineCap: 'round', lineJoin: 'round' },
         ).addTo(map);
-    }
+    });
 
     controlPoints.forEach((point, index) => {
         L.marker([point.latitude, point.longitude], {
@@ -1044,7 +1453,87 @@ function initializeRouteViewer() {
         }).addTo(map);
     });
 
-    const bounds = L.latLngBounds(visiblePoints.map((point) => [point.latitude, point.longitude]));
+    const checkpointList = document.querySelector('[data-checkpoint-list]');
+    const checkpointCount = document.querySelector('[data-checkpoint-count]');
+    const showCheckpoints = (checkpoints) => {
+        if (!checkpointList || !checkpointCount) return;
+        checkpointMarkers.clearLayers();
+        checkpointCount.textContent = checkpoints.length > 0
+            ? `${Math.max(0, checkpoints.length - 1)} checkpoint · finis`
+            : '0 checkpoint';
+        checkpointList.replaceChildren();
+        if (checkpoints.length === 0) {
+            const empty = document.createElement('p');
+            empty.className = 'planning-empty';
+            empty.textContent = 'Belum ada checkpoint karena lintasan belum memiliki jarak.';
+            checkpointList.append(empty);
+            return;
+        }
+        checkpoints.forEach((checkpoint, index) => {
+            const item = document.createElement('span');
+            item.className = 'checkpoint-chip';
+            item.textContent = `${checkpoint.kind === 'finish' ? 'Finis' : `CP ${index + 1}`} · ${formatRouteDistance(checkpoint.distance_meters)}`;
+            checkpointList.append(item);
+            L.marker([Number(checkpoint.latitude), Number(checkpoint.longitude)], {
+                icon: checkpointIcon(checkpoint, index),
+                interactive: false,
+                keyboard: false,
+            }).addTo(checkpointMarkers);
+        });
+    };
+
+    const showWaypoints = (items) => {
+        const list = document.querySelector('[data-waypoint-list]');
+        if (!list) return;
+        list.replaceChildren();
+        if (items.length === 0) {
+            const empty = document.createElement('p');
+            empty.className = 'planning-empty';
+            empty.textContent = 'Belum ada titik penting pada rute ini.';
+            list.append(empty);
+            return;
+        }
+        items.forEach((waypoint) => {
+            const card = document.createElement('article');
+            card.className = 'waypoint-card';
+            const details = document.createElement('div');
+            details.className = 'waypoint-card-details';
+            const title = document.createElement('strong');
+            title.textContent = waypoint.name;
+            const meta = document.createElement('span');
+            meta.textContent = `${waypointTypeLabels[waypoint.waypoint_type] ?? 'Lainnya'}${waypoint.distance_meters !== null && waypoint.distance_meters !== undefined ? ` · ${formatRouteDistance(waypoint.distance_meters)}` : ''}`;
+            details.append(title, meta);
+            if (waypoint.notes) {
+                const notes = document.createElement('p');
+                notes.textContent = waypoint.notes;
+                details.append(notes);
+            }
+            card.append(details);
+            list.append(card);
+            L.marker([Number(waypoint.latitude), Number(waypoint.longitude)], {
+                icon: waypointIcon(waypoint.sequence),
+                title: waypoint.name,
+            }).addTo(map);
+        });
+    };
+
+    showWaypoints(Array.isArray(config.waypoints) ? config.waypoints : []);
+    const localCheckpoints = deriveCheckpoints(visiblePoints);
+    showCheckpoints(localCheckpoints);
+    if (config.checkpointsUrl) {
+        fetch(config.checkpointsUrl, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
+            .then((response) => response.ok ? response.json() : null)
+            .then((payload) => {
+                if (Array.isArray(payload?.checkpoints)) showCheckpoints(payload.checkpoints);
+            })
+            .catch(() => {});
+    }
+
+    const mapPoints = [
+        ...visiblePoints,
+        ...(Array.isArray(config.waypoints) ? config.waypoints : []),
+    ];
+    const bounds = L.latLngBounds(mapPoints.map((point) => [Number(point.latitude), Number(point.longitude)]));
     if (bounds.isValid()) map.fitBounds(bounds.pad(0.18), { maxZoom: 15 });
 
     window.setTimeout(() => map.invalidateSize(), 0);

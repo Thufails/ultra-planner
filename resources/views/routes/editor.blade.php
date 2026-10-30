@@ -17,6 +17,18 @@
             'track_segment_index' => (int) $point->track_segment_index,
         ])->values()
         : [];
+    $waypoints = $route
+        ? $route->waypoints->map(fn ($waypoint) => [
+            'id' => $waypoint->id,
+            'sequence' => $waypoint->sequence,
+            'distance_meters' => $waypoint->distance_meters,
+            'latitude' => (float) $waypoint->latitude,
+            'longitude' => (float) $waypoint->longitude,
+            'name' => $waypoint->name,
+            'waypoint_type' => $waypoint->waypoint_type,
+            'notes' => $waypoint->notes,
+        ])->values()
+        : [];
 @endphp
 
 @section('title', ($isEditing ? 'Edit Rute' : 'Buat Rute') . ' · Ultra Planner')
@@ -43,7 +55,7 @@
             </div>
             <div class="toolbar-actions">
                 <button class="button button-secondary" type="button" data-locate>◎ Lokasi saya</button>
-                <button class="button button-secondary" type="button" data-undo disabled>Batalkan</button>
+                <button class="button button-secondary" type="button" data-undo disabled>Undo</button>
                 <button class="button button-quiet" type="button" data-clear disabled>Hapus semua</button>
                 <button class="button button-secondary" type="button" data-save-export>Simpan &amp; unduh GPX</button>
                 <button class="button button-primary" type="button" data-save>
@@ -124,6 +136,55 @@
             </div>
         </div>
 
+        <section class="route-planning-panel" aria-labelledby="checkpoint-heading">
+            <div class="route-planning-heading">
+                <div>
+                    <h2 id="checkpoint-heading">Checkpoint rute</h2>
+                    <p>Titik otomatis setiap 5 km dan satu titik finis, dihitung dari panjang lintasan.</p>
+                </div>
+                <strong data-checkpoint-count>0 checkpoint</strong>
+            </div>
+            <div class="checkpoint-list" data-checkpoint-list aria-live="polite">
+                <p class="planning-empty">Checkpoint akan muncul setelah rute memiliki jarak.</p>
+            </div>
+        </section>
+
+        @if ($isEditing)
+            <section class="route-planning-panel waypoint-panel" aria-labelledby="waypoint-heading">
+                <div class="route-planning-heading">
+                    <div>
+                        <h2 id="waypoint-heading">Titik penting</h2>
+                        <p>Tambahkan water refill, tempat makan, turnaround, exit, atau pickup ke rute tersimpan.</p>
+                    </div>
+                </div>
+                <div class="waypoint-form" data-waypoint-form>
+                    <label>Nama titik
+                        <input type="text" maxlength="120" data-waypoint-name placeholder="Contoh: Pos air km 5">
+                    </label>
+                    <label>Jenis
+                        <select data-waypoint-type>
+                            <option value="water_refill">Water refill</option>
+                            <option value="food_stop">Food stop</option>
+                            <option value="turnaround">Turnaround</option>
+                            <option value="exit_point">Exit point</option>
+                            <option value="pickup_point">Pickup point</option>
+                            <option value="custom">Lainnya</option>
+                        </select>
+                    </label>
+                    <label class="waypoint-notes-field">Catatan
+                        <input type="text" maxlength="5000" data-waypoint-notes placeholder="Catatan opsional">
+                    </label>
+                    <button class="button button-secondary" type="button" data-pick-waypoint>Pilih lokasi di peta</button>
+                    <span class="waypoint-selection" data-waypoint-selection>Lokasi belum dipilih</span>
+                    <button class="button button-primary" type="button" data-save-waypoint disabled>Simpan titik</button>
+                </div>
+                <p class="waypoint-help" data-waypoint-help>Isi nama dan jenis, pilih lokasi di peta, lalu simpan titik.</p>
+                <div class="waypoint-list" data-waypoint-list aria-live="polite">
+                    <p class="planning-empty">Belum ada titik penting.</p>
+                </div>
+            </section>
+        @endif
+
         <section class="elevation-panel" aria-labelledby="elevation-heading">
             <div class="elevation-panel-heading">
                 <h2 id="elevation-heading">Profil elevasi</h2>
@@ -151,6 +212,7 @@
     <script>
         window.routeEditorConfig = @js([
             'mode' => $isEditing ? 'edit' : 'create',
+            'routeId' => $route?->id,
             'storeUrl' => route('routes.store'),
             'updateUrl' => $route ? route('routes.update', $route) : null,
             'updateUrlTemplate' => url('/routes/__ROUTE_ID__'),
@@ -159,10 +221,12 @@
             'previewUrl' => route('routes.preview'),
             'elevationUrl' => route('routes.elevation-preview'),
             'showUrlTemplate' => url('/routes/__ROUTE_ID__'),
+            'waypointsUrlTemplate' => url('/routes/__ROUTE_ID__/waypoints'),
             'initialCenter' => [-2.5, 118],
             'initialZoom' => 5,
             'controlPoints' => $controlPoints,
             'routePoints' => $trackPoints,
+            'waypoints' => $waypoints,
             'routingMode' => $route?->routing_mode ?? 'direct',
             'distanceMeters' => $route?->distance_meters,
             'elevationGainMeters' => $route?->elevation_gain_meters,

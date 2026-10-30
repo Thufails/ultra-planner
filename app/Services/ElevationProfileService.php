@@ -73,6 +73,7 @@ class ElevationProfileService
             ->map(fn (?float $elevation, int $index): array => [
                 'distance_from_start_meters' => (int) round($index * $sampleDistance),
                 'elevation_meters' => $elevation === null ? null : round($elevation, 1),
+                'track_segment_index' => $sampleCoordinates[$index]['track_segment_index'],
             ])
             ->all();
 
@@ -110,7 +111,6 @@ class ElevationProfileService
                     ...$coordinate,
                     'elevation_meters' => $sample['elevation_meters'],
                     'distance_from_start_meters' => $sample['distance_from_start_meters'],
-                    'track_segment_index' => 0,
                 ];
             }))
             ->sortBy('distance_from_start_meters')
@@ -136,22 +136,30 @@ class ElevationProfileService
 
     public function calculateGainLoss(array $profile): array
     {
-        $elevations = collect($profile)
-            ->pluck('elevation_meters')
-            ->filter(fn ($elevation): bool => is_numeric($elevation))
-            ->map(fn ($elevation): float => (float) $elevation)
+        $points = collect($profile)
+            ->filter(fn (array $point): bool => isset($point['elevation_meters']) && is_numeric($point['elevation_meters']))
             ->values();
 
-        if ($elevations->count() < 2) {
+        if ($points->count() < 2) {
             return [null, null];
         }
 
         $noiseThresholdMeters = 3.0;
-        $anchor = $elevations->first();
+        $anchor = (float) $points->first()['elevation_meters'];
+        $previousSegment = $points->first()['track_segment_index'] ?? 0;
         $gain = 0.0;
         $loss = 0.0;
 
-        foreach ($elevations->slice(1) as $elevation) {
+        foreach ($points->slice(1) as $point) {
+            $segment = $point['track_segment_index'] ?? 0;
+            $elevation = (float) $point['elevation_meters'];
+
+            if ($segment !== $previousSegment) {
+                $anchor = $elevation;
+                $previousSegment = $segment;
+                continue;
+            }
+
             $change = $elevation - $anchor;
 
             if ($change >= $noiseThresholdMeters) {
@@ -264,12 +272,17 @@ class ElevationProfileService
             return [
                 'latitude' => $start['latitude'] + (($end['latitude'] - $start['latitude']) * $fraction),
                 'longitude' => $start['longitude'] + (($end['longitude'] - $start['longitude']) * $fraction),
+                'track_segment_index' => $start['track_segment_index'],
             ];
         }
 
         $last = end($geometry);
 
-        return ['latitude' => $last['latitude'], 'longitude' => $last['longitude']];
+        return [
+            'latitude' => $last['latitude'],
+            'longitude' => $last['longitude'],
+            'track_segment_index' => $last['track_segment_index'],
+        ];
     }
 
     private function distanceBetween(float $latitudeA, float $longitudeA, float $latitudeB, float $longitudeB): float

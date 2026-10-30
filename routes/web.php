@@ -1,11 +1,13 @@
 <?php
 
 use App\Http\Controllers\RouteController;
+use App\Http\Controllers\RouteCheckpointController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ElevationPreviewController;
 use App\Http\Controllers\RouteGpxExportController;
 use App\Http\Controllers\LocationSearchController;
 use App\Http\Controllers\RoutePreviewController;
+use App\Http\Controllers\RouteWaypointController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', DashboardController::class)->name('dashboard');
@@ -22,6 +24,10 @@ Route::post('routes/preview', RoutePreviewController::class)
     ->name('routes.preview');
 Route::get('routes/{route}/export/gpx', RouteGpxExportController::class)
     ->name('routes.export.gpx');
+Route::get('routes/{route}/checkpoints', RouteCheckpointController::class)
+    ->name('routes.checkpoints.index');
+Route::apiResource('routes.waypoints', RouteWaypointController::class)
+    ->only(['index', 'store', 'update', 'destroy']);
 Route::get('routes/{route}/edit', [RouteController::class, 'edit'])->name('routes.edit');
 
 Route::apiResource('routes', RouteController::class);

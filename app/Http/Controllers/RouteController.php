@@ -58,14 +58,14 @@ class RouteController extends Controller
         });
 
         return response()->json(
-            $route->load(['routeControlPoints', 'routePoints']),
+            $route->load(['routeControlPoints', 'routePoints', 'waypoints']),
             201,
         );
     }
 
     public function show(Request $request, Route $route): JsonResponse|View
     {
-        $route->load(['routeControlPoints', 'routePoints']);
+        $route->load(['routeControlPoints', 'routePoints', 'waypoints']);
 
         if (! $request->expectsJson()) {
             return view('routes.show', compact('route'));
@@ -76,7 +76,7 @@ class RouteController extends Controller
 
     public function edit(Route $route): View
     {
-        $route->load(['routeControlPoints', 'routePoints']);
+        $route->load(['routeControlPoints', 'routePoints', 'waypoints']);
 
         return view('routes.editor', compact('route'));
     }
@@ -114,7 +114,7 @@ class RouteController extends Controller
         });
 
         return response()->json(
-            $route->refresh()->load(['routeControlPoints', 'routePoints']),
+            $route->refresh()->load(['routeControlPoints', 'routePoints', 'waypoints']),
         );
     }
 
@@ -186,6 +186,8 @@ class RouteController extends Controller
                 'track_points_count' => 0,
             ])->save();
 
+            $route->waypoints()->update(['distance_meters' => null]);
+
             return;
         }
 
@@ -233,6 +235,62 @@ class RouteController extends Controller
             'elevation_source' => $elevationPointCount >= 2 ? 'SRTM 30m' : null,
             'track_points_count' => count($normalizedPoints),
         ])->save();
+
+        $route->waypoints->each(function ($waypoint) use ($normalizedPoints): void {
+            $waypoint->distance_meters = $this->distanceAlongTrackToCoordinate(
+                $normalizedPoints,
+                (float) $waypoint->latitude,
+                (float) $waypoint->longitude,
+            );
+            $waypoint->save();
+        });
+    }
+
+    private function distanceAlongTrackToCoordinate(array $points, float $latitude, float $longitude): ?int
+    {
+        $distanceBeforeSegment = 0.0;
+        $bestDistanceFromStart = null;
+        $bestOffset = INF;
+
+        for ($index = 1; $index < count($points); $index++) {
+            $start = $points[$index - 1];
+            $end = $points[$index];
+            if ($start['track_segment_index'] !== $end['track_segment_index']) {
+                continue;
+            }
+
+            $segmentLength = $this->distanceBetween(
+                (float) $start['latitude'],
+                (float) $start['longitude'],
+                (float) $end['latitude'],
+                (float) $end['longitude'],
+            );
+            $latitudeScale = cos(deg2rad(((float) $start['latitude'] + (float) $end['latitude'] + $latitude) / 3));
+            $startX = (float) $start['longitude'] * $latitudeScale;
+            $startY = (float) $start['latitude'];
+            $endX = (float) $end['longitude'] * $latitudeScale;
+            $endY = (float) $end['latitude'];
+            $targetX = $longitude * $latitudeScale;
+            $targetY = $latitude;
+            $deltaX = $endX - $startX;
+            $deltaY = $endY - $startY;
+            $lengthSquared = ($deltaX ** 2) + ($deltaY ** 2);
+            $fraction = $lengthSquared === 0.0
+                ? 0.0
+                : max(0.0, min(1.0, ((($targetX - $startX) * $deltaX) + (($targetY - $startY) * $deltaY)) / $lengthSquared));
+            $projectedLatitude = (float) $start['latitude'] + (((float) $end['latitude'] - (float) $start['latitude']) * $fraction);
+            $projectedLongitude = (float) $start['longitude'] + (((float) $end['longitude'] - (float) $start['longitude']) * $fraction);
+            $offset = $this->distanceBetween($latitude, $longitude, $projectedLatitude, $projectedLongitude);
+
+            if ($offset < $bestOffset) {
+                $bestOffset = $offset;
+                $bestDistanceFromStart = $distanceBeforeSegment + ($segmentLength * $fraction);
+            }
+
+            $distanceBeforeSegment += $segmentLength;
+        }
+
+        return $bestDistanceFromStart === null ? null : (int) round($bestDistanceFromStart);
     }
 
     private function distanceBetween(float $latitudeA, float $longitudeA, float $latitudeB, float $longitudeB): float
