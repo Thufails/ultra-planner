@@ -238,12 +238,19 @@ function distanceOf(points) {
 }
 
 const waypointTypeLabels = {
-    water_refill: 'Water refill',
-    food_stop: 'Food stop',
+    water_refill: 'Water station',
+    checkpoint: 'Checkpoint',
+    food_stop: 'Food station',
     turnaround: 'Turnaround',
     exit_point: 'Exit point',
     pickup_point: 'Pickup point',
     custom: 'Lainnya',
+};
+
+const editableWaypointTypes = {
+    water_refill: 'Water station',
+    checkpoint: 'Checkpoint',
+    food_stop: 'Food station',
 };
 
 function splitTrackSegments(points) {
@@ -321,10 +328,21 @@ function checkpointIcon(checkpoint, index) {
     });
 }
 
-function waypointIcon(sequence) {
+function waypointIcon(type, sequence) {
+    const codes = {
+        water_refill: 'W',
+        checkpoint: 'CP',
+        food_stop: 'F',
+        turnaround: 'T',
+        exit_point: 'E',
+        pickup_point: 'P',
+        custom: 'C',
+    };
+    const code = codes[type] ?? codes.custom;
+
     return L.divIcon({
         className: 'route-marker-shell',
-        html: `<span class="route-marker route-marker-waypoint">W${sequence}</span>`,
+        html: `<span class="route-marker route-marker-waypoint route-marker-waypoint-${type}">${code}${sequence}</span>`,
         iconSize: [34, 30],
         iconAnchor: [17, 15],
     });
@@ -406,7 +424,7 @@ function initializeRouteEditor() {
     const waypointType = editor.querySelector('[data-waypoint-type]');
     const waypointNotes = editor.querySelector('[data-waypoint-notes]');
     const pickWaypointButton = editor.querySelector('[data-pick-waypoint]');
-    const saveWaypointButton = editor.querySelector('[data-save-waypoint]');
+    const retryWaypointButton = editor.querySelector('[data-retry-waypoint]');
     const waypointSelection = editor.querySelector('[data-waypoint-selection]');
     const waypointHelp = editor.querySelector('[data-waypoint-help]');
 
@@ -428,6 +446,8 @@ function initializeRouteEditor() {
     let paths = [];
     let selectingWaypoint = false;
     let selectedWaypointPosition = null;
+    let waypointPreviewMarker = null;
+    let waypointSaveInProgress = false;
     let userLocationMarker = null;
     let userAccuracyCircle = null;
     let locationWatchActive = false;
@@ -442,9 +462,12 @@ function initializeRouteEditor() {
     followRoadsToggle.checked = routingMode === 'foot';
 
     let routeId = config.routeId ?? (config.updateUrl ? config.updateUrl.split('/').pop() : null);
-    if (!routeId && pickWaypointButton && saveWaypointButton) {
+    if (pickWaypointButton) {
+        pickWaypointButton.disabled = !routeId || !waypointName.value.trim();
+    }
+    if (!routeId && retryWaypointButton) {
         pickWaypointButton.disabled = true;
-        saveWaypointButton.disabled = true;
+        retryWaypointButton.hidden = true;
     }
 
     function visibleTrack() {
@@ -571,7 +594,7 @@ function initializeRouteEditor() {
             return;
         }
 
-        waypoints.forEach((waypoint) => {
+        waypoints.forEach((waypoint, waypointIndex) => {
             const card = document.createElement('article');
             card.className = 'waypoint-card';
             const details = document.createElement('div');
@@ -610,13 +633,20 @@ function initializeRouteEditor() {
             name.setAttribute('aria-label', 'Nama titik');
             const type = document.createElement('select');
             type.setAttribute('aria-label', 'Jenis titik');
-            Object.entries(waypointTypeLabels).forEach(([value, label]) => {
+            Object.entries(editableWaypointTypes).forEach(([value, label]) => {
                 const option = document.createElement('option');
                 option.value = value;
                 option.textContent = label;
                 option.selected = value === waypoint.waypoint_type;
                 type.append(option);
             });
+            if (!Object.hasOwn(editableWaypointTypes, waypoint.waypoint_type)) {
+                const existingType = document.createElement('option');
+                existingType.value = waypoint.waypoint_type;
+                existingType.textContent = waypointTypeLabels[waypoint.waypoint_type] ?? 'Jenis lama';
+                existingType.selected = true;
+                type.append(existingType);
+            }
             const notes = document.createElement('input');
             notes.type = 'text';
             notes.maxLength = 5000;
@@ -680,8 +710,12 @@ function initializeRouteEditor() {
             });
 
             waypointList.append(card);
+            const typeSequence = waypoints
+                .slice(0, waypointIndex + 1)
+                .filter((item) => item.waypoint_type === waypoint.waypoint_type)
+                .length;
             L.marker([Number(waypoint.latitude), Number(waypoint.longitude)], {
-                icon: waypointIcon(waypoint.sequence),
+                icon: waypointIcon(waypoint.waypoint_type, typeSequence),
                 title: waypoint.name,
             }).addTo(waypointMarkers);
         });
@@ -871,10 +905,12 @@ function initializeRouteEditor() {
                 throw new Error(validationMessage ?? payload.message ?? 'Jalur pejalan kaki gagal dihitung.');
             }
 
-            routeCandidates = (payload.routes ?? []).filter((candidate) =>
+            routeCandidates = (Array.isArray(payload.routes) ? payload.routes : []).filter((candidate) =>
                 Array.isArray(candidate.route_points) && candidate.route_points.length >= 2,
             );
-            lastSnapDistances = (payload.snap_distances_meters ?? []).map(Number).filter(Number.isFinite);
+            lastSnapDistances = (Array.isArray(payload.snap_distances_meters) ? payload.snap_distances_meters : [])
+                .map(Number)
+                .filter(Number.isFinite);
             selectedRouteCandidate = 0;
 
             if (routeCandidates.length === 0) throw new Error('Layanan tidak mengembalikan geometri rute yang bisa ditampilkan.');
@@ -1048,6 +1084,55 @@ function initializeRouteEditor() {
         }, 12000);
     });
 
+    async function saveSelectedWaypoint() {
+        if (!routeId || !selectedWaypointPosition || !waypointName.value.trim() || waypointSaveInProgress) return;
+        waypointSaveInProgress = true;
+        retryWaypointButton.hidden = true;
+        pickWaypointButton.disabled = true;
+        waypointHelp.classList.remove('is-error');
+        waypointHelp.textContent = 'Menyimpan titik penting…';
+
+        const distanceFromStart = distanceAlongTrackForPosition(visibleTrack(), selectedWaypointPosition);
+
+        try {
+            const response = await fetch(config.waypointsUrlTemplate.replace('__ROUTE_ID__', routeId), {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                body: JSON.stringify({
+                    name: waypointName.value.trim(),
+                    waypoint_type: waypointType.value,
+                    notes: waypointNotes.value.trim() || null,
+                    latitude: selectedWaypointPosition.latitude,
+                    longitude: selectedWaypointPosition.longitude,
+                    distance_meters: distanceFromStart,
+                }),
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                const validationMessage = Object.values(result.errors ?? {}).flat()[0];
+                throw new Error(validationMessage ?? result.message ?? 'Titik gagal disimpan.');
+            }
+
+            waypoints.push(result);
+            waypointName.value = '';
+            waypointNotes.value = '';
+            waypointSelection.textContent = 'Isi nama untuk menambah titik lain';
+            waypointHelp.textContent = 'Titik berhasil disimpan otomatis bersama rute.';
+            selectedWaypointPosition = null;
+            waypointPreviewMarker = null;
+            render();
+            showMessage('Titik penting tersimpan.');
+        } catch (error) {
+            waypointHelp.textContent = `${error.message || 'Titik gagal disimpan.'} Marker tetap ditampilkan; coba simpan lagi.`;
+            waypointHelp.classList.add('is-error');
+            retryWaypointButton.hidden = false;
+        } finally {
+            waypointSaveInProgress = false;
+            pickWaypointButton.disabled = !routeId || !waypointName.value.trim();
+        }
+    }
+
     map.on('click', (event) => {
         if (selectingWaypoint) {
             selectedWaypointPosition = {
@@ -1055,10 +1140,23 @@ function initializeRouteEditor() {
                 longitude: event.latlng.lng,
             };
             selectingWaypoint = false;
+            waypointPreviewMarker?.remove();
+            waypointPreviewMarker = L.marker(
+                [selectedWaypointPosition.latitude, selectedWaypointPosition.longitude],
+                {
+                    icon: waypointIcon(
+                        waypointType.value,
+                        waypoints.filter((waypoint) => waypoint.waypoint_type === waypointType.value).length + 1,
+                    ),
+                    title: 'Pratinjau titik penting — belum disimpan',
+                    zIndexOffset: 1000,
+                },
+            ).addTo(waypointMarkers);
             pickWaypointButton.classList.remove('is-active');
             waypointSelection.textContent = `Lokasi dipilih · ${event.latlng.lat.toFixed(5)}, ${event.latlng.lng.toFixed(5)}`;
-            saveWaypointButton.disabled = !waypointName.value.trim();
-            waypointHelp.textContent = 'Lokasi dipilih. Periksa nama dan jenisnya, lalu simpan titik.';
+            waypointHelp.classList.remove('is-error');
+            waypointHelp.textContent = 'Marker terlihat di peta. Titik sedang disimpan otomatis…';
+            saveSelectedWaypoint();
             return;
         }
 
@@ -1084,64 +1182,34 @@ function initializeRouteEditor() {
         }
     });
 
-    if (pickWaypointButton && saveWaypointButton) {
+    if (pickWaypointButton && retryWaypointButton) {
         pickWaypointButton.addEventListener('click', () => {
             if (!routeId) return;
+            if (!waypointName.value.trim()) {
+                waypointHelp.textContent = 'Isi nama titik terlebih dahulu.';
+                waypointHelp.classList.add('is-error');
+                waypointName.focus();
+                return;
+            }
             if (visibleTrack().length < 2) {
                 showMessage('Buat dan simpan lintasan terlebih dahulu sebelum menambahkan titik penting.', true);
                 return;
             }
+            waypointPreviewMarker?.remove();
+            waypointPreviewMarker = null;
             selectingWaypoint = true;
             selectedWaypointPosition = null;
-            saveWaypointButton.disabled = true;
             pickWaypointButton.classList.add('is-active');
             waypointSelection.textContent = 'Klik lokasi titik penting pada peta.';
-            waypointHelp.textContent = 'Mode pemilihan aktif. Klik satu lokasi pada lintasan atau peta.';
+            waypointHelp.classList.remove('is-error');
+            waypointHelp.textContent = 'Klik peta sekali; marker langsung ditambahkan dan disimpan.';
         });
 
         waypointName.addEventListener('input', () => {
-            saveWaypointButton.disabled = !routeId || !selectedWaypointPosition || !waypointName.value.trim();
+            pickWaypointButton.disabled = !routeId || waypointSaveInProgress || !waypointName.value.trim();
         });
 
-        saveWaypointButton.addEventListener('click', async () => {
-            if (!routeId || !selectedWaypointPosition || !waypointName.value.trim()) return;
-            saveWaypointButton.disabled = true;
-
-            const points = visibleTrack();
-            const distanceFromStart = distanceAlongTrackForPosition(points, selectedWaypointPosition);
-
-            try {
-                const response = await fetch(config.waypointsUrlTemplate.replace('__ROUTE_ID__', routeId), {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
-                    body: JSON.stringify({
-                        name: waypointName.value.trim(),
-                        waypoint_type: waypointType.value,
-                        notes: waypointNotes.value.trim() || null,
-                        latitude: selectedWaypointPosition.latitude,
-                        longitude: selectedWaypointPosition.longitude,
-                        distance_meters: distanceFromStart,
-                    }),
-                });
-                const result = await response.json().catch(() => ({}));
-                if (!response.ok) {
-                    const validationMessage = Object.values(result.errors ?? {}).flat()[0];
-                    throw new Error(validationMessage ?? result.message ?? 'Titik gagal disimpan.');
-                }
-                waypoints.push(result);
-                waypointName.value = '';
-                waypointNotes.value = '';
-                waypointSelection.textContent = 'Lokasi belum dipilih';
-                waypointHelp.textContent = 'Titik penting tersimpan bersama rute.';
-                selectedWaypointPosition = null;
-                render();
-                showMessage('Titik penting tersimpan.');
-            } catch (error) {
-                showMessage(error.message || 'Titik gagal disimpan.', true);
-                saveWaypointButton.disabled = false;
-            }
-        });
+        retryWaypointButton.addEventListener('click', saveSelectedWaypoint);
     }
 
     undoButton.addEventListener('click', () => {
@@ -1240,9 +1308,9 @@ function initializeRouteEditor() {
             config.mode = 'edit';
             routeId = String(savedRouteId);
             config.updateUrl = config.updateUrlTemplate.replace('__ROUTE_ID__', routeId);
-            if (pickWaypointButton && saveWaypointButton) {
-                pickWaypointButton.disabled = false;
-                saveWaypointButton.disabled = true;
+            if (pickWaypointButton && retryWaypointButton) {
+                pickWaypointButton.disabled = !waypointName.value.trim();
+                retryWaypointButton.hidden = true;
             }
 
             const exportUrl = config.gpxUrlTemplate.replace('__ROUTE_ID__', routeId);
@@ -1493,7 +1561,7 @@ function initializeRouteViewer() {
             list.append(empty);
             return;
         }
-        items.forEach((waypoint) => {
+        items.forEach((waypoint, waypointIndex) => {
             const card = document.createElement('article');
             card.className = 'waypoint-card';
             const details = document.createElement('div');
@@ -1510,8 +1578,12 @@ function initializeRouteViewer() {
             }
             card.append(details);
             list.append(card);
+            const typeSequence = items
+                .slice(0, waypointIndex + 1)
+                .filter((item) => item.waypoint_type === waypoint.waypoint_type)
+                .length;
             L.marker([Number(waypoint.latitude), Number(waypoint.longitude)], {
-                icon: waypointIcon(waypoint.sequence),
+                icon: waypointIcon(waypoint.waypoint_type, typeSequence),
                 title: waypoint.name,
             }).addTo(map);
         });

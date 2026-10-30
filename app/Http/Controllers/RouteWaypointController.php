@@ -12,11 +12,8 @@ class RouteWaypointController extends Controller
 {
     private const TYPES = [
         'water_refill',
+        'checkpoint',
         'food_stop',
-        'turnaround',
-        'exit_point',
-        'pickup_point',
-        'custom',
     ];
 
     public function index(Route $route): JsonResponse
@@ -40,7 +37,7 @@ class RouteWaypointController extends Controller
     {
         abort_unless($waypoint->route_id === $route->id, 404);
 
-        $waypoint->update($request->validate($this->rules($route, true)));
+        $waypoint->update($request->validate($this->rules($route, true, $waypoint->waypoint_type)));
 
         return response()->json($waypoint->refresh());
     }
@@ -54,13 +51,18 @@ class RouteWaypointController extends Controller
         return response()->noContent();
     }
 
-    private function rules(Route $route, bool $partial = false): array
+    private function rules(Route $route, bool $partial = false, ?string $existingType = null): array
     {
         $required = $partial ? 'sometimes|required' : 'required';
+        $allowedTypes = self::TYPES;
+
+        if ($partial && $existingType !== null && ! in_array($existingType, $allowedTypes, true)) {
+            $allowedTypes[] = $existingType;
+        }
 
         return [
             'name' => [$required, 'string', 'max:120'],
-            'waypoint_type' => [$required, 'string', 'in:' . implode(',', self::TYPES)],
+            'waypoint_type' => [$required, 'string', 'in:' . implode(',', $allowedTypes)],
             'latitude' => [$required, 'numeric', 'between:-90,90'],
             'longitude' => [$required, 'numeric', 'between:-180,180'],
             'distance_meters' => [

@@ -26,7 +26,7 @@ class RoutePreviewController extends Controller
                 'longitude' => round((float) $point['longitude'], 7),
             ])
             ->all();
-        $cacheKey = 'route-preview:fossgis:'.hash('sha256', json_encode($points));
+        $cacheKey = 'route-preview:fossgis:v2:'.hash('sha256', json_encode($points));
 
         if (Cache::has($cacheKey)) {
             return response()->json(Cache::get($cacheKey));
@@ -98,7 +98,8 @@ class RoutePreviewController extends Controller
                     'routes' => $routes->all(),
                     'snap_distances_meters' => collect($payload['waypoints'] ?? [])
                         ->map(fn (array $waypoint): int => (int) round((float) ($waypoint['distance'] ?? 0)))
-                        ->values(),
+                        ->values()
+                        ->all(),
                 ];
 
                 Cache::put($cacheKey, $result, now()->addHours(2));

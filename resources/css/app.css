@@ -308,6 +308,7 @@ h1 { margin: 0; color: var(--ink); font-family: var(--font-display); font-size: 
 .waypoint-form input:focus, .waypoint-form select:focus, .waypoint-inline-form input:focus, .waypoint-inline-form select:focus { border-color: #849cff; box-shadow: 0 0 0 3px #496bf51b; }
 .waypoint-notes-field { grid-column: 1 / 3; }
 .waypoint-form .button { min-height: 42px; }
+.waypoint-form [hidden] { display: none; }
 .waypoint-selection { align-self: center; color: #71809a; font-size: 13px; }
 .waypoint-help { margin: 10px 0 0; color: #71809a; font-size: 13px; }
 .waypoint-help.is-error { color: #ad443b; }
@@ -363,6 +364,11 @@ h1 { margin: 0; color: var(--ink); font-family: var(--font-display); font-size: 
 .route-marker-finish { background: #14b8c4; }
 .route-marker-checkpoint { background: #f29a16; }
 .route-marker-waypoint { width: 36px; height: 28px; border-radius: 9px; background: #182f61; font-size: 10px; }
+.route-marker-waypoint-water_refill { background: #167da3; }
+.route-marker-waypoint-food_stop { background: #c77a12; }
+.route-marker-waypoint-turnaround { background: #7452ba; }
+.route-marker-waypoint-exit_point { background: #cf5360; }
+.route-marker-waypoint-pickup_point { background: #16877d; }
 .user-location-marker-shell { border: 0; background: transparent; }
 .user-location-marker { width: 18px; height: 18px; display: block; border: 3px solid #fff; border-radius: 50%; background: #3478d4; box-shadow: 0 1px 7px #17251d80; }
 .leaflet-container { color: #27372e; font-family: var(--font-sans); }

@@ -154,7 +154,7 @@
                 <div class="route-planning-heading">
                     <div>
                         <h2 id="waypoint-heading">Titik penting</h2>
-                        <p>Tambahkan water refill, tempat makan, turnaround, exit, atau pickup ke rute tersimpan.</p>
+                        <p>Tambahkan water station, checkpoint, atau food station ke rute tersimpan.</p>
                     </div>
                 </div>
                 <div class="waypoint-form" data-waypoint-form>
@@ -163,22 +163,19 @@
                     </label>
                     <label>Jenis
                         <select data-waypoint-type>
-                            <option value="water_refill">Water refill</option>
-                            <option value="food_stop">Food stop</option>
-                            <option value="turnaround">Turnaround</option>
-                            <option value="exit_point">Exit point</option>
-                            <option value="pickup_point">Pickup point</option>
-                            <option value="custom">Lainnya</option>
+                            <option value="water_refill">Water station</option>
+                            <option value="checkpoint">Checkpoint</option>
+                            <option value="food_stop">Food station</option>
                         </select>
                     </label>
                     <label class="waypoint-notes-field">Catatan
                         <input type="text" maxlength="5000" data-waypoint-notes placeholder="Catatan opsional">
                     </label>
-                    <button class="button button-secondary" type="button" data-pick-waypoint>Pilih lokasi di peta</button>
-                    <span class="waypoint-selection" data-waypoint-selection>Lokasi belum dipilih</span>
-                    <button class="button button-primary" type="button" data-save-waypoint disabled>Simpan titik</button>
+                    <button class="button button-secondary" type="button" data-pick-waypoint disabled>Pilih lokasi di peta</button>
+                    <span class="waypoint-selection" data-waypoint-selection>Isi nama, lalu pilih lokasi</span>
+                    <button class="button button-secondary button-small" type="button" data-retry-waypoint hidden>Coba simpan lagi</button>
                 </div>
-                <p class="waypoint-help" data-waypoint-help>Isi nama dan jenis, pilih lokasi di peta, lalu simpan titik.</p>
+                <p class="waypoint-help" data-waypoint-help>Isi nama dan jenis, lalu pilih lokasi di peta. Klik peta akan langsung menyimpan titik.</p>
                 <div class="waypoint-list" data-waypoint-list aria-live="polite">
                     <p class="planning-empty">Belum ada titik penting.</p>
                 </div>
