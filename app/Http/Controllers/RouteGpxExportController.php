@@ -75,6 +75,8 @@ class RouteGpxExportController extends Controller
         $gpx .= "<gpx version=\"1.1\" creator=\"Ultra Planner\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n";
         $gpx .= "  <metadata>\n    <name>{$name}</name>\n  </metadata>\n";
 
+        $exportWaypoints = [];
+
         foreach ($waypoints as $waypoint) {
             $latitude = (float) $waypoint->latitude;
             $longitude = (float) $waypoint->longitude;
@@ -83,25 +85,16 @@ class RouteGpxExportController extends Controller
                 continue;
             }
 
-            $waypointName = $this->escapeXml($waypoint->name);
-            $type = $this->escapeXml($this->waypointTypeLabel($waypoint->waypoint_type));
-            $latitude = $this->formatCoordinate($latitude);
-            $longitude = $this->formatCoordinate($longitude);
-            $gpx .= "  <wpt lat=\"{$latitude}\" lon=\"{$longitude}\">\n";
-
-            if ($waypoint->elevation_meters !== null && is_numeric($waypoint->elevation_meters) && is_finite((float) $waypoint->elevation_meters)) {
-                $gpx .= '    <ele>' . $this->formatCoordinate((float) $waypoint->elevation_meters, 2) . "</ele>\n";
-            }
-
-            $gpx .= "    <name>{$waypointName}</name>\n";
-
-            if (filled($waypoint->notes)) {
-                $description = $this->escapeXml($waypoint->notes);
-                $gpx .= "    <desc>{$description}</desc>\n";
-            }
-
-            $gpx .= "    <type>{$type}</type>\n";
-            $gpx .= "  </wpt>\n";
+            $exportWaypoints[] = [
+                'distance_meters' => $waypoint->distance_meters ?? PHP_INT_MAX,
+                'order' => $waypoint->sequence,
+                'latitude' => $latitude,
+                'longitude' => $longitude,
+                'elevation' => $waypoint->elevation_meters,
+                'name' => $waypoint->name,
+                'type' => $this->waypointTypeLabel($waypoint->waypoint_type),
+                'notes' => $waypoint->notes,
+            ];
         }
 
         foreach ($checkpoints as $checkpoint) {
@@ -110,11 +103,41 @@ class RouteGpxExportController extends Controller
             }
 
             $distanceKm = number_format($checkpoint['distance_meters'] / 1000, 0, '.', '');
-            $checkpointName = $this->escapeXml("Checkpoint {$distanceKm} km");
-            $latitude = $this->formatCoordinate((float) $checkpoint['latitude']);
-            $longitude = $this->formatCoordinate((float) $checkpoint['longitude']);
+            $exportWaypoints[] = [
+                'distance_meters' => $checkpoint['distance_meters'],
+                'order' => 0,
+                'latitude' => (float) $checkpoint['latitude'],
+                'longitude' => (float) $checkpoint['longitude'],
+                'elevation' => null,
+                'name' => "Checkpoint {$distanceKm} km",
+                'type' => 'Checkpoint',
+                'notes' => null,
+            ];
+        }
+
+        usort($exportWaypoints, static fn (array $left, array $right): int =>
+            [$left['distance_meters'], $left['order']] <=> [$right['distance_meters'], $right['order']]
+        );
+
+        foreach ($exportWaypoints as $waypoint) {
+            $latitude = $this->formatCoordinate($waypoint['latitude']);
+            $longitude = $this->formatCoordinate($waypoint['longitude']);
+            $waypointName = $this->escapeXml($waypoint['name']);
+            $type = $this->escapeXml($waypoint['type']);
             $gpx .= "  <wpt lat=\"{$latitude}\" lon=\"{$longitude}\">\n";
-            $gpx .= "    <name>{$checkpointName}</name>\n    <type>Checkpoint</type>\n  </wpt>\n";
+
+            if ($waypoint['elevation'] !== null && is_numeric($waypoint['elevation']) && is_finite((float) $waypoint['elevation'])) {
+                $gpx .= '    <ele>' . $this->formatCoordinate((float) $waypoint['elevation'], 2) . "</ele>\n";
+            }
+
+            $gpx .= "    <name>{$waypointName}</name>\n";
+
+            if (filled($waypoint['notes'])) {
+                $description = $this->escapeXml($waypoint['notes']);
+                $gpx .= "    <desc>{$description}</desc>\n";
+            }
+
+            $gpx .= "    <type>{$type}</type>\n  </wpt>\n";
         }
 
         $gpx .= "  <trk>\n    <name>{$name}</name>\n";
