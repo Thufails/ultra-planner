@@ -1,6 +1,10 @@
-# 🏔️ Ultra Planner
+<p align="center">
+  <img src="public/favicon.svg" width="88" alt="Ultra Planner logo">
+</p>
 
-A web planner for designing trail and ultrarunning routes on a map, reviewing terrain estimates, saving routes, and downloading them as GPX files.
+<h1 align="center">Ultra Planner</h1>
+
+<p align="center">Plan trail and ultrarunning routes on a map, review terrain estimates, save your routes, and export them as GPX files.</p>
 
 ## 🗺️ Features
 
